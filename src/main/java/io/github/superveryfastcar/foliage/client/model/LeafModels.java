@@ -2,6 +2,8 @@ package io.github.superveryfastcar.foliage.client.model;
 
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import io.github.superveryfastcar.foliage.Foliage;
+import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
+import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
 import io.github.superveryfastcar.foliage.shape.LeafPicture;
@@ -148,7 +150,8 @@ public final class LeafModels {
         TreeSet<String> withoutCards = new TreeSet<>();
         RandomSource random = RandomSource.create();
         for (Block block : BuiltInRegistries.BLOCK) {
-            if (!(block instanceof DynamicLeavesBlock leaves)
+            // A bare block gets the model of its leaf further down.
+            if (!(block instanceof DynamicLeavesBlock leaves) || block instanceof BareLeavesBlock
                     || !(leaves.getLeavesProperties().getPrimitiveLeaves().getBlock() instanceof LeavesBlock)) {
                 continue;
             }
@@ -180,8 +183,28 @@ public final class LeafModels {
                 }
             }
         }
+        // A bare block is drawn by the same model as its leaf, so that a
+        // spot looks the same whichever of the two stands there. Where the
+        // leaf was left alone, the bare block keeps the empty model its
+        // block state file names and is not drawn at all.
+        int bareKinds = 0;
+        for (BareLeavesBlock bare : Twins.bareBlocks()) {
+            DynamicLeavesBlock leaf = bare.leaf();
+            boolean any = false;
+            for (BlockState state : bare.getStateDefinition().getPossibleStates()) {
+                BakedModel model = leaf == null ? null : event.getModels().get(BlockModelShaper.stateToModelLocation(Twins.swap(state, leaf)));
+                if (model instanceof LeafModel) {
+                    event.getModels().put(BlockModelShaper.stateToModelLocation(state), model);
+                    any = true;
+                }
+            }
+            if (any) {
+                bareKinds++;
+            }
+        }
         models = List.copyOf(wrapped);
         Foliage.LOGGER.info("Foliage: new leaf shapes for {} kinds of Dynamic Trees leaves: {}", done.size(), done);
+        Foliage.LOGGER.info("Foliage: {} of {} bare blocks are drawn by the model of their leaves", bareKinds, Twins.bareBlocks().size());
         if (!withoutCards.isEmpty()) {
             Foliage.LOGGER.info("Foliage: no leaf cards for {} (their texture is not listed in an atlas source of type "
                     + "foliage:leaf_parts, or is not square)", withoutCards);
@@ -254,12 +277,12 @@ public final class LeafModels {
         List<TextureAtlasSprite> budTwigs = new ArrayList<>();
         ResourceLocation budBase = LeafPartsSource.budTwigs(twigBase);
         for (int number = 0; number < LeafPartsSource.MAX_TWIG_PICTURES; number++) {
-            TextureAtlasSprite twig = sprite(event, twigBase.withSuffix("_" + number));
+            TextureAtlasSprite twig = twigSprite(event, twigBase.withSuffix("_" + number));
             if (twig == null) {
                 break;
             }
             twigs.add(twig);
-            TextureAtlasSprite withBuds = sprite(event, budBase.withSuffix("_" + number));
+            TextureAtlasSprite withBuds = twigSprite(event, budBase.withSuffix("_" + number));
             budTwigs.add(withBuds != null ? withBuds : twig);
         }
         return new LeafModel(model, new LeafSprites(leaves, cards, twigs.toArray(TextureAtlasSprite[]::new),
@@ -272,6 +295,19 @@ public final class LeafModels {
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, ResourceLocation name) {
         TextureAtlasSprite sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, name));
         return sprite.contents().name().equals(name) ? sprite : null;
+    }
+
+    /**
+     * A twig picture from the block atlas, or null if there is none of
+     * that name. Twig pictures are ordinary texture files, so the file is
+     * looked for first: the end of a set of twigs is found by asking for
+     * one picture more than it has, and asking the atlas for a picture it
+     * does not have puts a warning into the player's log.
+     */
+    @Nullable
+    private static TextureAtlasSprite twigSprite(ModelEvent.ModifyBakingResult event, ResourceLocation name) {
+        ResourceLocation file = name.withPath(path -> "textures/" + path + ".png");
+        return Minecraft.getInstance().getResourceManager().getResource(file).isPresent() ? sprite(event, name) : null;
     }
 
     // ------------------------------------------------------------------
@@ -297,7 +333,12 @@ public final class LeafModels {
      * models.
      */
     public static boolean drawsAt(BlockAndTintGetter level, BlockPos pos) {
-        return Minecraft.getInstance().getBlockRenderer().getBlockModel(level.getBlockState(pos)) instanceof LeafModel;
+        return draws(level.getBlockState(pos));
+    }
+
+    /** Whether a block state is drawn by one of Foliage's leaf models. */
+    public static boolean draws(BlockState state) {
+        return Minecraft.getInstance().getBlockRenderer().getBlockModel(state) instanceof LeafModel;
     }
 
     /**

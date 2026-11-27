@@ -1,5 +1,6 @@
 package io.github.superveryfastcar.foliage.client.model;
 
+import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.season.LeafClock;
 import io.github.superveryfastcar.foliage.season.LeafStage;
@@ -60,11 +61,25 @@ import net.neoforged.neoforge.client.model.data.ModelProperty;
  * model this one wraps. Anything that asks for faces without step 1 (a
  * leaf block drawn in a hand, by another mod, as a falling block) also gets
  * the wrapped model's answer.
+ *
+ * <h2>Bare blocks</h2>
+ * The bare block of a kind of leaves ({@link BareLeavesBlock}) is drawn by
+ * the same model as the leaf block, through the same two steps. Asked
+ * without step 1, the model answers with nothing for a bare block: that is
+ * how the bare spots of a tree that is cut down fall as nothing.
  */
 public final class LeafModel extends BakedModelWrapper<BakedModel> {
 
     /** The note from step 1 to step 2: the finished faces of the block's recipe. */
     static final ModelProperty<Built> BUILT = new ModelProperty<>();
+
+    /**
+     * A note for step 2 on a bare block: "draw this one as a whole leaf
+     * block, with the model that is wrapped". Set when the leaf calendar
+     * has the spot in full leaf and the shape is "plain".
+     */
+    private static final ModelProperty<Boolean> WHOLE = new ModelProperty<>();
+    private static final ModelData WHOLE_DATA = ModelData.of(WHOLE, Boolean.TRUE);
 
     private static final Direction[] DIRECTIONS = Direction.values();
 
@@ -115,7 +130,12 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         LeafModels.Active active = LeafModels.active();
         int recipe = recipe(active.settings(), ClientLeafClock.clock(), level, pos, state);
         if (recipe == Recipe.NONE) {
-            return super.getModelData(level, pos, state, modelData);
+            ModelData plain = super.getModelData(level, pos, state, modelData);
+            // A bare block that is to be drawn as a whole leaf block says so; see getQuads.
+            if (state.getBlock() instanceof BareLeavesBlock) {
+                return plain == ModelData.EMPTY ? WHOLE_DATA : plain.derive().with(WHOLE, Boolean.TRUE).build();
+            }
+            return plain;
         }
         Built built = built(active, recipe);
         // Leaf blocks carry no notes of their own, so nearly always the
@@ -166,6 +186,13 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
                                     ModelData data, @Nullable RenderType renderType) {
         Built built = data.get(BUILT);
         if (built == null) {
+            // Whoever asks about a bare block without having asked first
+            // where it stands (Dynamic Trees, for a tree that falls) gets
+            // nothing: a bare block is bare unless the leaf calendar says
+            // otherwise.
+            if (state != null && state.getBlock() instanceof BareLeavesBlock && data.get(WHOLE) == null) {
+                return NOTHING;
+            }
             List<BakedQuad> quads = super.getQuads(state, side, rand, data, renderType);
             if (LeafModels.COUNTING) {
                 LeafModels.count(side == null, quads.size(), 0);

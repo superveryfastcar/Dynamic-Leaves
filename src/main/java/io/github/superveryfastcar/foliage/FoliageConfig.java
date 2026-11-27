@@ -2,14 +2,17 @@ package io.github.superveryfastcar.foliage;
 
 import io.github.superveryfastcar.foliage.season.LeafSchedule;
 import io.github.superveryfastcar.foliage.season.SeasonSettings;
+import io.github.superveryfastcar.foliage.world.WalkSettings;
 import java.util.List;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
  * The rules of the world, kept in {@code config/foliage-common.toml}:
- * when the leaves fall and come back, and for which trees. On a server
- * they are the same for every player; the server sends them to each player
- * who joins.
+ * when the leaves fall and come back, and for which trees (section
+ * {@code leafCalendar}), and how the server swaps leaf blocks for bare
+ * blocks (section {@code bareBranches}). On a server the leaf calendar is
+ * the same for every player; the server sends it to each player who
+ * joins. The second section is the server's own business.
  *
  * <p>Every number of the leaf calendar is a setting here. The values the
  * mod ships with are those of {@link SeasonSettings#DEFAULT}.</p>
@@ -54,6 +57,35 @@ public final class FoliageConfig {
 
     /** The kinds of leaves that shed, one line each. */
     public static final ModConfigSpec.ConfigValue<List<? extends String>> KINDS;
+
+    /** Whether a leaf spot that goes bare really holds a bare block. */
+    public static final ModConfigSpec.BooleanValue BARE_BLOCKS;
+
+    /** The most chunks the server looks at per tick to keep the blocks in step with the leaf calendar. */
+    public static final ModConfigSpec.IntValue CHUNKS_PER_TICK;
+
+    /** The most blocks the server swaps per tick. */
+    public static final ModConfigSpec.IntValue CHANGES_PER_TICK;
+
+    /** The most time the server spends on it per tick, in thousandths of a second. */
+    public static final ModConfigSpec.DoubleValue MILLIS_PER_TICK;
+
+    /** How easily fire eats a bare block. */
+    public static final ModConfigSpec.IntValue TWIGS_BURN;
+
+    /** How easily fire starts in the open air next to a bare block. */
+    public static final ModConfigSpec.IntValue TWIGS_SPREAD_FIRE;
+
+    /**
+     * The mod's own fire numbers of a bare block: those of the thinnest
+     * twig of Dynamic Trees. Fire eats it as slowly as it eats a log, and
+     * does not jump along it.
+     */
+    public static final int DEFAULT_TWIGS_BURN = 5;
+    public static final int DEFAULT_TWIGS_SPREAD_FIRE = 0;
+
+    /** The highest fire number that means anything to the game. */
+    public static final int MAX_FIRE_NUMBER = 300;
 
     static {
         SeasonSettings standard = SeasonSettings.DEFAULT;
@@ -112,6 +144,34 @@ public final class FoliageConfig {
                         () -> "dynamictrees:oak_leaves, 0, outside_in", SeasonSettings::isKindLine);
         b.pop();
 
+        WalkSettings walk = WalkSettings.DEFAULT;
+        b.comment("Bare branches: while a leaf block has shed its leaves, the server puts a bare block in its place.",
+                  "A bare block lets light, rain, snow, players and animals through, and drops nothing.",
+                  "For the tree it is still a leaf, so the tree keeps its shape. In spring the leaf block comes back.",
+                  "The server does this a little at a time, the trees nearest to the players first.",
+                  "How a tree looks does not depend on it: a leaf block that has not been swapped yet is drawn bare all the same.")
+         .push("bareBranches");
+        BARE_BLOCKS = b.comment("false: leaf blocks are never swapped. Bare trees then still give shade, hold snow and stop arrows.",
+                                "Bare blocks already in the world are turned back into leaf blocks as players come near.",
+                                "Set this to false and visit your land before you take the mod out of a world.")
+                .define("bareBlocks", walk.enabled());
+        CHUNKS_PER_TICK = b.comment("The most chunks the server looks at in one tick. Most are done at a glance.")
+                .defineInRange("chunksPerTick", walk.chunksPerTick(), WalkSettings.MIN_CHUNKS, WalkSettings.MAX_CHUNKS);
+        CHANGES_PER_TICK = b.comment("The most blocks the server swaps in one tick. Every swap is sent to the players in view,",
+                                     "whose games then work out the light anew: lower this if players stutter when leaves fall.")
+                .defineInRange("changesPerTick", walk.changesPerTick(), WalkSettings.MIN_CHANGES, WalkSettings.MAX_CHANGES);
+        MILLIS_PER_TICK = b.comment("The most time the server spends on this in one tick, in thousandths of a second.",
+                                    "A tick lasts 50.")
+                .defineInRange("millisPerTick", walk.millisPerTick(), WalkSettings.MIN_MILLIS, WalkSettings.MAX_MILLIS);
+        TWIGS_BURN = b.comment("How easily fire eats a bare block. A log has 5, leaves have 30 to 60.",
+                               "0: bare blocks never burn. Fire then cannot reach the twigs and branches inside a bare crown,",
+                               "because fire only starts in open air and a bare block is not air.")
+                .defineInRange("twigsBurn", DEFAULT_TWIGS_BURN, 0, MAX_FIRE_NUMBER);
+        TWIGS_SPREAD_FIRE = b.comment("How easily fire starts in the open air next to a bare block. A log has 5, leaves have 30 to 60.",
+                                      "0: fire does not jump along the outside of a bare crown. It can still eat its way in.")
+                .defineInRange("twigsSpreadFire", DEFAULT_TWIGS_SPREAD_FIRE, 0, MAX_FIRE_NUMBER);
+        b.pop();
+
         SPEC = b.build();
     }
 
@@ -129,5 +189,26 @@ public final class FoliageConfig {
         return new SeasonSettings(ENABLED.get(), FALL_DAYS.get(), RETURN_DAYS.get(), TREE_DAYS.get(), BUD_DAYS.get(),
                 SHIFT_DAYS.get(), SHIFT_PATCH.get(), STEPS_PER_DAY.get(), SPOT_SHARE.get(), DEPTH_WEIGHT.get(),
                 DEEPEST.get(), SeasonSettings.parseKinds(KINDS.get()));
+    }
+
+    /**
+     * The settings of the bare branches as the file has them now, or the
+     * mod's own values while the file is not read yet.
+     */
+    public static WalkSettings walkSettings() {
+        if (!SPEC.isLoaded()) {
+            return WalkSettings.DEFAULT;
+        }
+        return new WalkSettings(BARE_BLOCKS.get(), CHUNKS_PER_TICK.get(), CHANGES_PER_TICK.get(), MILLIS_PER_TICK.get());
+    }
+
+    /** How easily fire eats a bare block, as the file has it now (the game's "flammability"). */
+    public static int twigsBurn() {
+        return SPEC.isLoaded() ? TWIGS_BURN.get() : DEFAULT_TWIGS_BURN;
+    }
+
+    /** How easily fire starts in the open air next to a bare block, as the file has it now (the game's "fire spread speed"). */
+    public static int twigsSpreadFire() {
+        return SPEC.isLoaded() ? TWIGS_SPREAD_FIRE.get() : DEFAULT_TWIGS_SPREAD_FIRE;
     }
 }

@@ -40,5 +40,11 @@
   "foliage.configuration.spotShare": "Share of the time one leaf block takes",
   "foliage.configuration.depthWeight": "Order by depth in the crown",
   "foliage.configuration.deepest": "Depth right at the twig",
-  "foliage.configuration.kinds": "Kinds of leaves that fall"
+  "foliage.configuration.kinds": "Kinds of leaves that fall",
+  "foliage.configuration.bareBranches": "Bare branches",
+  "foliage.configuration.bareBlocks": "Bare trees let light, weather and players through",
+  "foliage.configuration.chunksPerTick": "Most chunks looked at per tick",
+  "foliage.configuration.changesPerTick": "Most blocks swapped per tick",
+  "foliage.configuration.millisPerTick": "Most time per tick (thousandths of a second)",
+  "block.foliage.bare_leaves": "Bare Twigs"
 }

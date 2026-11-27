@@ -66,4 +66,19 @@ public enum LeafStage {
     public boolean leafless() {
         return this == BARE || this == BUDS;
     }
+
+    /**
+     * Whether a spot at this stage holds the bare block instead of the
+     * leaf block ({@code block.BareLeavesBlock}): from the last few leaves
+     * of autumn to the first small leaves of spring. A spot with a good
+     * part of its leaves holds its leaf block.
+     *
+     * <p>The last leaves and the first ones go with the bare block so
+     * that they get the light of the open sky and stop nobody: a leaf
+     * block dims the light for everything behind it, however few leaves
+     * are drawn on it.</p>
+     */
+    public boolean bareBlock() {
+        return this == LAST || this == BARE || this == BUDS || this == FIRST;
+    }
 }

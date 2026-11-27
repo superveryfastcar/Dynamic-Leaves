@@ -1,10 +1,13 @@
 package io.github.superveryfastcar.foliage.dev;
 
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
+import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.worldgen.JoCode;
 import com.mojang.blaze3d.platform.NativeImage;
 import io.github.superveryfastcar.foliage.Foliage;
+import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
+import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
@@ -16,8 +19,11 @@ import io.github.superveryfastcar.foliage.shape.LeafShape;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.foliage.shape.WinterTwigs;
+import io.github.superveryfastcar.foliage.world.LeafWalker;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.BitSet;
 import java.util.Collection;
 import java.util.Comparator;
 import java.util.List;
@@ -41,8 +47,10 @@ import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
+import net.minecraft.world.level.LightLayer;
 import net.minecraft.world.level.WorldDataConfiguration;
 import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
+import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
@@ -66,7 +74,10 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  * shape is really drawn, how many faces the chunk builder gets per leaf
  * block, and that the trees go through the year: thinner day by day at the
  * end of autumn, bare with twigs in winter, in bud and then in leaf again
- * at the start of spring. It saves pictures of the same scene in every
+ * at the start of spring. It checks the bare blocks as a player's game
+ * sees them: that every spot holds the block its stage asks for, the same
+ * block as on the server, and that the ground under bare crowns has the
+ * full light of the sky. It saves pictures of the same scene in every
  * shape and on every day of the two changes for a human to judge the
  * look.</p>
  *
@@ -387,8 +398,9 @@ public final class DevSelfTest {
                 phase = 2;
             }
             case 2 -> {
-                // Wait until the chunk builder has caught up, then a little longer.
-                quiet = minecraft.levelRenderer.hasRenderedAllSections() ? quiet + 1 : 0;
+                // Wait until the server has swapped the blocks the date asks for and the
+                // chunk builder has caught up, then a little longer.
+                quiet = minecraft.levelRenderer.hasRenderedAllSections() && walkerCounters(server)[6] == 0 ? quiet + 1 : 0;
                 if (quiet < 30) {
                     return;
                 }
@@ -509,6 +521,44 @@ public final class DevSelfTest {
         });
     }
 
+    /**
+     * The counters of the server's walker (see {@link LeafWalker#counters}),
+     * and as a seventh number how many chunks still wait for a look. Asked
+     * on the server thread; the caller waits for the answer.
+     */
+    private static long[] walkerCounters(IntegratedServer server) {
+        return server.submit(() -> {
+            LeafWalker walker = LeafWalker.of(server.overworld());
+            long[] counters = Arrays.copyOf(walker.counters(), 7);
+            counters[6] = walker.pending();
+            return counters;
+        }).join();
+    }
+
+    /**
+     * Holds what the player's game has at some spots against what the
+     * server has there. Asked on the server thread; the caller waits for
+     * the answer.
+     *
+     * @param spots  the spots
+     * @param states what the player's game holds there, in the same order
+     * @return for each spot: 0 if both hold the same block state, 1 if
+     *         they hold the same block with another supply number or
+     *         mark, 2 if they hold different blocks
+     */
+    private static byte[] againstServer(IntegratedServer server, List<BlockPos> spots, List<BlockState> states) {
+        return server.submit(() -> {
+            ServerLevel level = server.overworld();
+            byte[] result = new byte[spots.size()];
+            for (int i = 0; i < result.length; i++) {
+                BlockState there = level.getBlockState(spots.get(i));
+                BlockState here = states.get(i);
+                result[i] = (byte) (there == here ? 0 : there.getBlock() == here.getBlock() ? 1 : 2);
+            }
+            return result;
+        }).join();
+    }
+
     // ------------------------------------------------------------------
     // The checks
     // ------------------------------------------------------------------
@@ -591,6 +641,18 @@ public final class DevSelfTest {
         expect("the big oak stands (" + leaves + " leaf blocks)", leaves > 300);
         expect("every leaf block of the big oak is drawn by a leaf model of Foliage", ours);
         expect("Seasons' own bare-tree look is out of the way for them", !onSeasons);
+        // The bare blocks: every state of every one is drawn by the model of its leaf.
+        int bareStates = 0;
+        int bareOurs = 0;
+        for (BareLeavesBlock bare : Twins.bareBlocks()) {
+            for (BlockState state : bare.getStateDefinition().getPossibleStates()) {
+                bareStates++;
+                bareOurs += LeafModels.draws(state) ? 1 : 0;
+            }
+        }
+        expect("every plain kind of leaves has a bare block (" + Twins.bareBlocks().size() + ")", Twins.bareBlocks().size() >= 12);
+        expect("every state of every bare block is drawn by the model of its leaves (" + bareOurs + " of " + bareStates + ")",
+                bareStates > 0 && bareOurs == bareStates);
         expect("the world's rules of the leaf calendar arrived from the server", LeafCalendar.hasSentSettings());
         expect("the leaf clock runs", ClientLeafClock.clock() != null);
     }
@@ -638,21 +700,100 @@ public final class DevSelfTest {
         int agree = 0;
         long oakFaces = 0;
         int[] stages = new int[LeafStage.values().length];
+        // Which of its two blocks each spot holds, and how bright it is there.
+        int bareBlocks = 0;
+        BitSet wrongBlock = new BitSet();
+        long lightAtLeaves = 0;
+        int darkestBare = 15;
+        List<BlockPos> spots = new ArrayList<>();
+        List<BlockState> held = new ArrayList<>();
         for (BlockPos pos : BlockPos.betweenClosed(OAK_FROM, OAK_TO)) {
-            if (!(level.getBlockState(pos).getBlock() instanceof DynamicLeavesBlock)) {
+            BlockState state = level.getBlockState(pos);
+            if (!(state.getBlock() instanceof DynamicLeavesBlock)) {
                 continue;
             }
             oakLeaves++;
+            spots.add(pos.immutable());
+            held.add(state);
             int recipe = LeafModels.recipeAt(level, pos);
             int handedOut = LeafModels.faceCountAt(level, pos);
             oakFaces += Math.max(0, handedOut);
+            LeafStage stage = LeafStage.FULL;
             if (recipe != Recipe.NONE) {
                 ours++;
                 agree += handedOut == Recipe.quadCount(recipe) ? 1 : 0;
-                stages[Recipe.stage(recipe).ordinal()]++;
+                stage = Recipe.stage(recipe);
             } else {
                 agree += handedOut == 6 ? 1 : 0;
-                stages[LeafStage.FULL.ordinal()]++;
+            }
+            stages[stage.ordinal()]++;
+            boolean isBare = state.getBlock() instanceof BareLeavesBlock;
+            bareBlocks += isBare ? 1 : 0;
+            wrongBlock.set(spots.size() - 1, isBare != stage.bareBlock());
+            int sky = level.getBrightness(LightLayer.SKY, pos);
+            if (isBare) {
+                darkestBare = Math.min(darkestBare, sky);
+            } else {
+                lightAtLeaves += sky;
+            }
+        }
+        // The ground under the crowns: every column with leaf spots and no wood in it.
+        int ground = 0;
+        int shaded = 0;
+        BlockPos.MutableBlockPos column = new BlockPos.MutableBlockPos();
+        for (int x = OAK_FROM.getX(); x <= OAK_TO.getX(); x++) {
+            columns:
+            for (int z = OAK_FROM.getZ(); z <= OAK_TO.getZ(); z++) {
+                boolean leaves = false;
+                for (int y = OAK_FROM.getY(); y <= OAK_TO.getY(); y++) {
+                    BlockState state = level.getBlockState(column.set(x, y, z));
+                    if (TreeHelper.isBranch(state)) {
+                        continue columns;
+                    }
+                    leaves |= state.getBlock() instanceof DynamicLeavesBlock;
+                }
+                if (leaves) {
+                    ground++;
+                    shaded += level.getBrightness(LightLayer.SKY, column.set(x, OAK_FROM.getY(), z)) < 15 ? 1 : 0;
+                }
+            }
+        }
+        int leafBlocks = oakLeaves - bareBlocks;
+        double lightAtLeaf = leafBlocks == 0 ? 15.0 : lightAtLeaves / (double) leafBlocks;
+        long[] walked = walkerCounters(minecraft.getSingleplayerServer());
+        log(String.format(Locale.ROOT, "%s: of the big oak's %d spots %d hold the bare block; sky light at the leaf blocks left %.1f on average, "
+                        + "at the darkest bare block %d; %d of %d ground columns under the crowns in shade; the server's walker so far: %d made bare, "
+                        + "%d given leaves, %d chunks and %d sections looked at, %d rounds, %.1f ms",
+                name, oakLeaves, bareBlocks, lightAtLeaf, darkestBare, shaded, ground, walked[0], walked[1], walked[2], walked[3], walked[4], walked[5] / 1.0e6));
+        // The player's game against the server. Dynamic Trees does not send a leaf block's new supply
+        // number to the players when only the number changed (its own leaves look the same with any
+        // number). Such a spot may be a step ahead or behind in the player's game until its block is
+        // swapped, which sends the whole block. Those spots are counted, and left out of the next check.
+        byte[] onServer = againstServer(minecraft.getSingleplayerServer(), spots, held);
+        int otherBlock = 0;
+        int otherNumber = 0;
+        int wrong = 0;
+        for (int i = 0; i < onServer.length; i++) {
+            otherBlock += onServer[i] == 2 ? 1 : 0;
+            otherNumber += onServer[i] == 1 ? 1 : 0;
+            wrong += onServer[i] == 0 && wrongBlock.get(i) ? 1 : 0;
+        }
+        expect(name + ": the player's game holds the same block as the server at every spot (" + otherBlock + " differ)", otherBlock == 0);
+        expect(name + ": few spots have a supply number the player's game was not told (" + otherNumber + " of " + oakLeaves + ")", otherNumber * 50 <= oakLeaves);
+        expect(name + ": every spot of the big oak holds the block its stage asks for (" + wrong + " do not)", wrong == 0);
+        switch (time) {
+            case FULL -> expect(name + ": in full leaf most of the ground under the crowns is in shade (" + shaded + " of " + ground + " columns)",
+                    bareBlocks == 0 && shaded * 2 >= ground);
+            case BARE -> {
+                expect(name + ": under the bare crowns the ground has the full light of the sky (" + shaded + " of " + ground + " columns in shade)",
+                        bareBlocks == oakLeaves && shaded == 0);
+                expect(name + ": no spot inside a bare crown is dark (sky light " + darkestBare + " at the darkest)", darkestBare >= 13);
+            }
+            default -> {
+                if (bareBlocks * 5 >= oakLeaves * 3) {
+                    expect(String.format(Locale.ROOT, "%s: with most of the crown bare, the leaves left are lit by the sky (%.1f on average)", name, lightAtLeaf),
+                            lightAtLeaf >= 12.0);
+                }
             }
         }
         double perOakLeaf = oakFaces / (double) Math.max(1, oakLeaves);

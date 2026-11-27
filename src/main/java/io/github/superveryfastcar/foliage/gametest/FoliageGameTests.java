@@ -106,7 +106,7 @@ public final class FoliageGameTests {
     private static final double MOST_FACES_FULL_CROWN = 5.0;
 
     /** One of the largest oaks Dynamic Trees knows, as its growth code. */
-    private static final String BIG_OAK = "JOJxOOKPz+vnSx8nSR+beJnzzz89x98+txuJXvzePt6WJ9y98mOOJ67+SPkxJ+fy8";
+    static final String BIG_OAK = "JOJxOOKPz+vnSx8nSR+beJnzzz89x98+txuJXvzePt6WJ9y98mOOJ67+SPkxJ+fy8";
 
     private FoliageGameTests() {
     }
@@ -730,18 +730,20 @@ public final class FoliageGameTests {
 
     /**
      * A Dynamic Trees tree planted for a test, with all its leaf blocks
-     * found and read.
+     * found and read. Also used by the tests of the bare blocks.
      */
-    private static final class Tree {
+    static final class Tree {
 
         /** How far from the trunk, and how high, leaf blocks are looked for. */
-        private static final int REACH = 20;
-        private static final int HEIGHT = 56;
+        static final int REACH = 20;
+        static final int HEIGHT = 56;
 
-        private final ServerLevel level;
-        private final String species;
-        private final BlockPos root;
-        private final List<BlockPos> leaves = new ArrayList<>();
+        final ServerLevel level;
+        final String species;
+        /** The block the tree stands on. */
+        final BlockPos root;
+        /** Where the tree had leaf blocks when it was planted. */
+        final List<BlockPos> leaves = new ArrayList<>();
 
         private Tree(ServerLevel level, String species, BlockPos root) {
             this.level = level;
@@ -762,8 +764,20 @@ public final class FoliageGameTests {
             return codes.get(Math.min(rank, codes.size() - 1)).toString();
         }
 
-        /** Plants a full-grown tree in the middle of the test's area and finds its leaf blocks. */
+        /** Plants a full-grown tree in the middle of the test's area and finds its leaf blocks. Its soil is spent: it grows no more. */
         static Tree plant(GameTestHelper helper, String species, String code) {
+            return plant(helper, species, code, 0);
+        }
+
+        /**
+         * Plants a tree in the middle of the test's area and finds its leaf
+         * blocks.
+         *
+         * @param fertility how much the soil under the tree still has to
+         *                  give, 0 to 15; a tree on spent soil (0) does not
+         *                  grow
+         */
+        static Tree plant(GameTestHelper helper, String species, String code, int fertility) {
             ServerLevel level = helper.getLevel();
             MinecraftServer server = level.getServer();
             BlockPos root = helper.absolutePos(new BlockPos(3, 0, 3));
@@ -772,7 +786,7 @@ public final class FoliageGameTests {
             server.getCommands().performPrefixedCommand(
                     server.createCommandSourceStack().withLevel(level).withSuppressedOutput()
                             .withCallback((success, value) -> succeeded[0] = success),
-                    "dt settree " + root.getX() + " " + root.getY() + " " + root.getZ() + " " + species + " " + code + " 0 0");
+                    "dt settree " + root.getX() + " " + root.getY() + " " + root.getZ() + " " + species + " " + code + " 0 " + fertility);
             check(succeeded[0], "Dynamic Trees plants a " + species);
             Tree tree = new Tree(level, species, root);
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();

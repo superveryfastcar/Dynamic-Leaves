@@ -1,17 +1,24 @@
 package io.github.superveryfastcar.foliage;
 
 import com.mojang.logging.LogUtils;
+import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.network.FoliageNetwork;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
+import io.github.superveryfastcar.foliage.world.LeafWalker;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
+import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.registries.RegisterEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
 
@@ -35,10 +42,17 @@ import org.slf4j.Logger;
  * and the block's place, by plain arithmetic that gives the same answer on
  * a server and in every player's game (the {@code season} package). The
  * game client draws by it when it builds the picture of a chunk (the
- * {@code client} package). In this version no block is changed: a leaf
- * block that looks bare is still there. The rules that decide which pieces
- * a leaf block is drawn from are kept apart from the drawing (the
- * {@code shape} package), so that they can be tested without a screen.
+ * {@code client} package). The rules that decide which pieces a leaf
+ * block is drawn from are kept apart from the drawing (the {@code shape}
+ * package), so that they can be tested without a screen.
+ *
+ * <p>The server follows the same arithmetic with the blocks themselves:
+ * while a leaf spot has few leaves or none, it holds a bare block in
+ * place of the leaf block (the {@code block} package), which lets light,
+ * weather and players through but keeps the tree in shape. A walker goes
+ * over the chunks near the players and swaps the two as the calendar
+ * moves on (the {@code world} package). What a spot looks like never
+ * depends on which of the two blocks is there.</p>
  *
  * <h2>Where things live</h2>
  * <ul>
@@ -48,6 +62,10 @@ import org.slf4j.Logger;
  *   <li>{@code shape} package: what the six neighbors of a leaf block are,
  *       which pieces a leaf block is drawn from at each stage, and the
  *       pixels of the leaf pictures.</li>
+ *   <li>{@code block} package: the bare block, and which leaf block it
+ *       belongs to.</li>
+ *   <li>{@code world} package: swaps leaf blocks and bare blocks on the
+ *       server.</li>
  *   <li>{@code network} package: sends the world's rules to the players.</li>
  *   <li>{@code client.model} package: turns the pieces into faces and
  *       hands them to the game.</li>
@@ -89,6 +107,18 @@ public final class Foliage {
             }
         });
 
+        // The bare blocks: made when the game registers blocks, as late as
+        // possible, so that Dynamic Trees' leaf blocks exist (see Twins);
+        // paired with their leaf blocks when all blocks exist.
+        modBus.addListener(EventPriority.LOWEST, RegisterEvent.class, Twins::register);
+        modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(Twins::resolve));
+        // Data packs can give a tree species other leaves: tell the species about their bare blocks again.
+        NeoForge.EVENT_BUS.addListener((ServerAboutToStartEvent event) -> Twins.fitSpecies());
+        NeoForge.EVENT_BUS.addListener((TagsUpdatedEvent event) -> Twins.fitSpecies());
+
+        // The walker that keeps the blocks in step with the leaf calendar.
+        LeafWalker.register(NeoForge.EVENT_BUS);
+
         // The client side is set up in client.FoliageClient.
     }
 
@@ -100,6 +130,7 @@ public final class Foliage {
         if (config.getSpec() != FoliageConfig.SPEC) {
             return;
         }
+        LeafWalker.setSettings(FoliageConfig.walkSettings());
         if (!LeafCalendar.setServerSettings(FoliageConfig.seasonSettings())) {
             return;
         }

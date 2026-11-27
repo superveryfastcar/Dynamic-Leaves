@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.season;
 
 import io.github.superveryfastcar.calendar.api.CalendarRules;
 import io.github.superveryfastcar.calendar.api.Season;
+import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.util.PosHash;
 import java.util.Map;
 import javax.annotation.Nullable;
@@ -100,7 +101,7 @@ public final class LeafClock {
     private final int spotShare;
     private final int depthWeight;
 
-    /** The leaf blocks that shed and their schedules, side by side. Few, so a plain search is fastest. */
+    /** The leaf blocks that shed, their bare blocks, and the schedule of each, side by side. Few, so a plain search is fastest. */
     private final Block[] kindBlocks;
     private final LeafSchedule[] kindSchedules;
 
@@ -148,9 +149,11 @@ public final class LeafClock {
             this.window = 0;
         }
 
-        // The leaf blocks named in the settings that the game knows.
+        // The leaf blocks named in the settings that the game knows, each
+        // followed by its bare block if it has one: a spot keeps its
+        // schedule whichever of the two blocks stands there.
         int count = 0;
-        Block[] blocks = new Block[settings.kinds().size()];
+        Block[] blocks = new Block[settings.kinds().size() * 2];
         LeafSchedule[] schedules = new LeafSchedule[blocks.length];
         for (Map.Entry<ResourceLocation, LeafSchedule> kind : settings.kinds().entrySet()) {
             Block block = BuiltInRegistries.BLOCK.get(kind.getKey());
@@ -158,6 +161,12 @@ public final class LeafClock {
                 blocks[count] = block;
                 schedules[count] = kind.getValue();
                 count++;
+                Block bare = Twins.bareOf(block);
+                if (bare != null) {
+                    blocks[count] = bare;
+                    schedules[count] = kind.getValue();
+                    count++;
+                }
             }
         }
         this.kindBlocks = java.util.Arrays.copyOf(blocks, count);
@@ -234,7 +243,8 @@ public final class LeafClock {
     }
 
     /**
-     * The schedule of a leaf block, or null if it does not shed.
+     * The schedule of a leaf block or of its bare block, or null if the
+     * kind does not shed.
      *
      * @param block any block
      */

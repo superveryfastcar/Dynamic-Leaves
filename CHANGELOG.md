@@ -3,6 +3,38 @@
 All notable changes to Foliage, newest first. The version numbers are
 explained in the README under "Versions".
 
+## 0.3.0
+
+Real bare branches.
+
+- While a leaf spot has no leaves (from "a few last leaves" in autumn to
+  "first leaves" in spring), its leaf block is swapped for a bare block
+  ("Bare Twigs"), and swapped back when the leaves return. For Dynamic
+  Trees the bare block is a leaf of the same tree, so twigs hold and the
+  tree keeps its shape. For everything else it is next to nothing: no
+  collision, no outline, no shade, no drops. Fire eats it as slowly as
+  wood and does not run along it as along leaves (settings `twigsBurn`
+  and `twigsSpreadFire`).
+- Light passes through bare crowns: the ground under a bare tree is as
+  bright as open land, and the last leaves inside a half-bare crown are no
+  longer drawn too dark. Rain and snow fall through, and snow that lay on a
+  leaf goes with it.
+- A tree that grows in winter grows bare. A bare tree that is cut down
+  falls bare and drops nothing from its crown.
+- Every plain kind of Dynamic Trees leaves (also those of addons) has a
+  bare block, named `foliage:bare_<leaf block>`.
+- The server swaps the blocks a little at a time, nearest trees first. New
+  settings in `config/foliage-common.toml`, section `bareBranches`:
+  `bareBlocks`, `chunksPerTick`, `changesPerTick`, `millisPerTick`,
+  `twigsBurn`, `twigsSpreadFire`.
+- **Players now need Foliage to join a server that has it.** Before the mod
+  is taken out of a world, the bare blocks should be turned back into
+  leaves: see "Taking the mod out of a world" in the README.
+- Fixed: the log no longer gets a warning about a missing twig picture
+  (`twigs_..._4`) for every kind of leaves at start.
+- Not yet: snow on the branches of bare trees, falling leaves, a command to
+  restore a whole world, a check with Distant Horizons.
+
 ## 0.2.0
 
 The leaf calendar, as a look.

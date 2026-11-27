@@ -1,10 +1,12 @@
 # Foliage
 
-Leaves with depth for the trees of Dynamic Trees, and a year for them to live through. A crown is no longer a pile of plain leaf cubes: it is built from leaf faces on its outside, leaf planes and round leaf cards inside, and small clumps of leaves at the tips of its branches. In the last days of autumn the leaves thin out and fall, tree by tree and from the edge of each crown inward. In winter the trees stand bare, with twigs on their branches. In the first days of spring the twigs bud, and small light leaves grow back from the twigs outward. All of it needs fewer faces than the plain cubes.
+Leaves with depth for the trees of Dynamic Trees, and a year for them to live through. A crown is no longer a pile of plain leaf cubes: it is built from leaf faces on its outside, leaf planes and round leaf cards inside, and small clumps of leaves at the tips of its branches. In the last days of autumn the leaves thin out and fall, tree by tree and from the edge of each crown inward. In winter the trees stand bare, with twigs on their branches, and bare means bare: light, rain, snow and players pass through the crown. In the first days of spring the twigs bud, and small light leaves grow back from the twigs outward. All of it needs fewer faces than the plain cubes.
 
 Foliage is a mod for **Minecraft 1.21.1 on NeoForge** (built against NeoForge 21.1.267). It is an addon for [Dynamic Trees](https://modrinth.com/mod/dynamictrees) 1.7.2 and needs the [Calendar](https://github.com/superveryfastcar/Calendar) and Seasons mods.
 
-> **Version 0.2.0 is the second of four steps.** It brings the year as a look: leaves fall, trees stand bare and grow new leaves, but only in how they are drawn. A bare tree's leaf blocks are still there: they still hold snow, shade the ground and can be walked on. That changes in the next step (see [Roadmap](#roadmap)).
+> **Version 0.3.0 is the third of four steps.** It makes bare trees really bare: while a leaf spot has no leaves, its leaf block is swapped for an empty stand-in that lets light, weather and players through. Falling leaves and snow on crowns come with the next step (see [Roadmap](#roadmap)).
+>
+> **From this version on, every player needs Foliage to join a server that has it**, because the stand-ins are blocks of the mod. Read [Taking the mod out of a world](#taking-the-mod-out-of-a-world) before you remove it.
 
 - [What it does](#what-it-does): for players and pack makers
 - [Settings](#settings): each player's own, and the rules of the world
@@ -62,7 +64,23 @@ The leaves do not change all the time but 4 times a day, and only the part of th
 
 With the plain shape the year is shown too: the cubes stay cubes, and only their pictures thin out.
 
-**What this version does not do yet:** the leaf blocks of a bare tree are still in the world. Snow still lies on a bare crown, it still gives shade, and you can still stand on it. For the same reason the leaves left deep inside a half-bare crown look too dark for a few days in autumn and spring: the bare blocks around them still take light away. Real bare branches come with 0.3.0.
+### Real bare branches
+
+Dynamic Trees keeps a tree alive through its leaf blocks: a twig only holds while leaf blocks surround its tip. So the leaf blocks of a bare tree cannot simply be removed, or the twigs would rot and the tree would grow back in another shape. Instead, a leaf spot that has lost its leaves holds a **bare block** ("Bare Twigs") until its leaves return. For the tree it is a leaf like any other. For everything else it is next to nothing:
+
+- **You walk, shoot and look through it.** It has no collision and no outline: the crosshair goes through it to whatever is behind, and a block can be placed where it is. Animals and monsters take it for open air.
+- **Light passes through it.** The ground under a bare tree is as bright as open land, and the last leaves inside a crown that is going bare are lit by the sky instead of standing in the dark.
+- **Rain and snow fall through it.** Snow that lay on a leaf block goes with its leaves, and snow settles on the ground under bare trees.
+- **It drops nothing.** A bare tree that is cut down gives its wood as always, and no leaves, seeds or sticks from its crown.
+- **It burns like wood, not like leaves.** Fire eats its way into a bare crown as slowly as it eats logs, and does not run along the outside of it as it does along leaves. (It has to be able to burn at all: fire only starts in open air, and a bare block is not air, so a crown of bare blocks that could not burn would keep fire away from its own twigs.) Both numbers are settings.
+- **Water stays where it is.** Water does not flow into a bare block, as it does not flow into leaves. A stream that a crown holds back in summer does not break through in winter.
+- **The tree stays as it is.** Its twigs hold, a tree that grows in winter grows bare, and in spring every spot gets its leaf block back with nothing lost.
+
+A spot holds its bare block from the stage "a few last leaves" in autumn until "first leaves" in spring, so the last and the first leaves of a crown already hang in open air. How a tree is drawn never depends on which of the two blocks is there: both are drawn by the same rule from the date.
+
+The server swaps the blocks a little at a time, the trees nearest to the players first (see the settings under [`bareBranches`](#the-rules-of-the-world-configfoliage-commontoml)). When a whole forest goes bare at once, for example when you come back in winter to land you last saw in summer, the trees around you are done within seconds and the ones far away some time later. Until a tree's turn comes it already looks bare, but still gives shade and can be stood on.
+
+Every plain kind of Dynamic Trees leaves has a bare block, also those of addons. Palm fronds and the wart blocks of the Nether trees have none; if they are listed to shed, they change their look only.
 
 ### Fewer faces than plain cubes
 
@@ -123,7 +141,9 @@ Each player's own.
 
 ### The rules of the world: `config/foliage-common.toml`
 
-When the leaves fall and come back, and for which trees. On a server these are the server's: it sends them to every player who joins, and again when the file changes. Days are days of the Calendar mod, and parts of a day are allowed.
+The file has two sections.
+
+**`leafCalendar`**: when the leaves fall and come back, and for which trees. On a server these are the server's: it sends them to every player who joins, and again when the file changes. Days are days of the Calendar mod, and parts of a day are allowed.
 
 | Setting | Default | What it does |
 | --- | --- | --- |
@@ -148,6 +168,27 @@ kinds = ["dynamictrees:birch_leaves, 0, inside_out", "dynamictrees:oak_leaves, 1
 
 If the fall or the return is set longer than autumn or spring are in the Calendar mod's settings, it is cut to the season's length.
 
+**`bareBranches`**: how the server swaps leaf blocks for bare blocks. Only the server reads these.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `bareBlocks` | `true` | `false`: leaf blocks are never swapped. Bare trees are then only drawn bare: they still give shade, hold snow and stop arrows. Bare blocks already in the world are turned back into leaf blocks as players come near. |
+| `chunksPerTick` | `64` | The most chunks the server looks at in one tick. Most are done at a glance: a chunk without leaves, or one where nothing can be wrong at this time of year, costs next to nothing. |
+| `changesPerTick` | `300` | The most blocks the server swaps in one tick. Every swap is sent to the players in view, whose games then work out the light anew. Lower this if players stutter when leaves fall; raise it if bare forests take too long to let the light through. |
+| `millisPerTick` | `1.0` | The most time the server spends on this in one tick, in thousandths of a second. A tick lasts 50. |
+| `twigsBurn` | `5` | How easily fire eats a bare block, 0 to 300. A log has 5, leaves have 30 to 60. With 0 bare blocks never burn, and fire cannot reach the twigs and branches inside a bare crown. |
+| `twigsSpreadFire` | `0` | How easily fire starts in the open air next to a bare block, 0 to 300. A log has 5, leaves have 30 to 60. With 0 fire does not jump along the outside of a bare crown, though it can still eat its way in. |
+
+### Taking the mod out of a world
+
+Bare blocks are blocks of Foliage. If the mod is removed while a world holds them, the game turns them into air, and Dynamic Trees then lets the twigs of those trees rot and grow anew. To avoid that:
+
+1. Set `bareBlocks = false` (or wait for summer, when no tree holds a bare block).
+2. Visit your land. The server gives the leaf blocks back in every chunk that comes into view of a player, within a few seconds.
+3. Then remove the mod.
+
+Chunks that nobody visits in between keep their bare blocks. A command that restores a whole world at once is planned for 0.4.0.
+
 ---
 
 ## Other mods and resource packs
@@ -155,7 +196,9 @@ If the fall or the return is set longer than autumn or spring are in the Calenda
 - **Sodium**: works, and is what Foliage is tested with. Hidden faces are left out by Foliage itself, so nothing depends on how a renderer hides faces.
 - **Seasons** (0.4.0 or newer): gives the leaf colors, and says where there is a winter. Seasons' own look of thinning trees is switched off for the leaves Foliage draws, so the two do not thin the same tree twice. The game's own leaf blocks (not Dynamic Trees) are still Seasons' to draw.
 - **Calendar**: gives the days. Without a calendar for a world (before its date has arrived from the server) every tree is drawn in full leaf.
-- **On a server**: the server needs Foliage too. It holds the rules of the leaf calendar and sends them to the players. A player whose server does not send any uses the rules of their own file.
+- **On a server**: the server and every player need Foliage. The server holds the rules of the leaf calendar, sends them to the players and swaps the blocks of bare trees. A player with Foliage can still join a server without it; the trees then go through the year as a look only, by the rules of the player's own file.
+- **Snow mods and falling snow**: snow cannot lie on a bare crown, because nothing rests on a bare block. It falls through to the ground. Snow on the branches of bare trees is planned for 0.4.0.
+- **Distant Horizons**: not tested with bare blocks yet. That is part of 0.4.0.
 - **Resource packs**: the leaf cards and the pictures of thinned, last, young and half-grown leaves are made from whatever leaf textures are loaded, so a pack that changes the leaves changes them all. Animated or non-square leaf textures get none of them: such trees still go through the year (fewer and smaller pieces, then twigs), but with their one full picture.
 - **Fast graphics** (leaves that are not see-through): crowns are drawn from their outside only. Thinned leaves are shown as full ones, and the last leaves of autumn and the first of spring are not drawn.
 - **Leaves from other mods** (addons of Dynamic Trees): get outer faces, planes and clumps by themselves if they are drawn as a plain cube with one texture. For leaf cards and matching twigs, list the texture in a file `assets/minecraft/atlases/blocks.json` of a resource pack or mod:
@@ -187,9 +230,9 @@ If the fall or the return is set longer than autumn or spring are in the Calenda
 | Version | What |
 | --- | --- |
 | 0.1.0 | Leaf shapes. |
-| 0.2.0 | The leaf calendar as a look (this version): leaves thin out and fall over the last days of autumn, bare twigs in winter, buds and young leaves over the first days of spring, in the new shapes. |
-| 0.3.0 | Real bare branches: leaf blocks of bare trees are swapped for an empty placeholder, so rain, snow and light pass through winter crowns. |
-| 0.4.0 | Falling leaves, snow on crowns, fruit, measurements. |
+| 0.2.0 | The leaf calendar as a look: leaves thin out and fall over the last days of autumn, bare twigs in winter, buds and young leaves over the first days of spring, in the new shapes. |
+| 0.3.0 | Real bare branches (this version): leaf blocks of bare trees are swapped for an empty stand-in, so rain, snow, light and players pass through winter crowns. |
+| 0.4.0 | Falling leaves, snow on the branches of bare trees, trees that rest in winter (no growth unless a setting allows it) and bear fruit in its season, a command to restore a whole world, measurements in large forests and with Distant Horizons. |
 
 The whole design is in `docs/build-plan.md` and the design document it links to.
 
@@ -199,13 +242,16 @@ The whole design is in `docs/build-plan.md` and the design document it links to.
 
 ### How it works
 
-Everything in this version happens in the game client while it builds the picture of a chunk. The server only holds the rules of the leaf calendar and sends them.
+The look happens in the game client while it builds the picture of a chunk. The server holds the rules of the leaf calendar, sends them, and swaps leaf blocks for bare blocks and back.
 
 - `season` package: the leaf calendar, plain whole-number arithmetic, the same on a server and a client. `LeafClock` is one moment of the year: it answers for a leaf block at a position which `LeafStage` it is at (full, thin, thinner, last leaves, bare, buds, first leaves, half grown). `SeasonSettings` are the rules, `LeafCalendar` holds the ones in use and makes the clock from the Calendar mod's date.
 - `shape` package: plain arithmetic, no drawing. `Surround` reads the six neighbors of a leaf block into one number (open sides, where the wood is, where the heart of the crown is, whether snow lies on top). `ShapeRules` turns that, the settings and the stage into a `Recipe`, one number that says which pieces the block gets. `LeafLook` joins the clock, the question "is there a winter here" and the shape rules for one chunk-building thread. `CardPicture` cuts the picture of a leaf card, `LeafPictures` works out the pictures of thinned and young leaves.
 - `client.model` package: `LeafModel` wraps the leaf block's own model. The game asks it once per block for the recipe (`getModelData`) and then for the faces (`getQuads`). The faces of a recipe are built once (`QuadMaker`) and shared by every block with that recipe. `LeafModels` holds the settings and puts the wrappers in place when the game has loaded its models.
 - `client.sprite` package: `LeafPartsSource`, an atlas source that makes the card pictures and the pictures of the year from the loaded leaf textures.
 - `client.ClientLeafClock`: looks at the calendar once a tick, swaps the clock when a step has passed and asks Seasons for a redraw when the look of any tree changed.
+- `block` package: the bare blocks. `BareLeavesBlock` is a leaf block of Dynamic Trees with everything a player could notice taken away. `BareLeavesProperties` is its "leaf kind" for Dynamic Trees and passes every question (tree family, how water spreads, how well it burns) on to the kind of the leaf it stands in for. `Twins` makes one bare block for every plain leaf kind when the game registers blocks, pairs them up and tells every tree species that the bare blocks are leaves of its own.
+- `world` package: `SpotRule` says which of its two blocks a leaf spot holds at a moment of the leaf calendar. `LeafWalker` (one per world, on the server) looks at the chunks in view of the players at every step of the calendar and swaps what is wrong, within the limits of `WalkSettings`.
+- `client.BareBlockStates`: a small resource pack made in memory that gives every bare block a block state file, so that the game does not report missing models. The models themselves are put in place by `LeafModels`: a bare block is drawn by the model of its leaf.
 - `network` package: the rules of the world, sent to players when they join and when the file changes.
 - `util` package: `PosHash`, fixed random numbers per position.
 
@@ -218,7 +264,12 @@ Things that are easy to get wrong:
 - A card never stands at 45 degrees, where the cards of diagonal neighbors would lie in one plane and flicker.
 - A clump sits against the side its block hangs on to (wood first, then the heart of the crown). A leaf block with snow on top is never made a clump.
 - A leaf block whose six neighbors are all leaves or solid blocks is "inside the crown": while leaves fall or grow it is drawn with one or two planes only. These blocks are buried in summer, and they would be the costliest part of autumn and spring otherwise.
-- Callers that ask the model without its data (items, falling blocks, Dynamic Trees' falling tree) get the full leaf cube, whatever the season.
+- Callers that ask the model without its data (items, falling blocks, Dynamic Trees' falling tree) get the full leaf cube, whatever the season; for a bare block they get nothing, so a bare tree falls bare.
+- The bare blocks are registered at the lowest priority. The game calls every mod once per priority, Dynamic Trees reads its tree packs at normal priority and registers its leaf blocks at the lowest, so only then do its blocks exist. The names of the bare blocks (`foliage:bare_<leaf block>`, with the mod id in front for other mods' leaves) are stored in worlds and must never change.
+- A swap is written into the chunk quietly: the players are told and the light is worked out, but no neighbor is updated, because for the tree nothing has changed. A normal block change would wake every leaf block around it. Only what rested on a leaf that went bare is looked after (snow on top, a vine on its side).
+- The walker only touches chunks whose changes the server passes on to players (ticket level 32 or lower, which covers everything in view). A change to any other chunk would never reach a player's game that holds an old copy of it.
+- Dynamic Trees puts leaf blocks down itself: when a twig grows, when a sapling becomes a tree, when the supply of a leaf changes. Where that happens through a bare block, the block is asked which state to place and answers by the calendar. Where it happens through the species' own leaf block, a bare block next to the new leaf notices it and the walker puts the spot right in the next tick. Whatever is missed is found at the next step of the calendar.
+- The game works out which block a spot holds from the date alone, never from what was there before, so nothing has to be stored and a world can be opened at any date.
 
 ### Building
 
@@ -238,13 +289,13 @@ The twig pictures are drawn by `tools/make_twigs.py` (Python 3 with Pillow). The
 ./gradlew runGameTestServer
 ```
 
-runs the automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, and real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits.
+runs the automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits, and the bare blocks: a tree goes bare and back with nothing lost, grows in winter, is cut down bare, the light under it, places without a winter, and the limits per tick.
 
 ```
 ./gradlew runClient -Pfoliage.selfTest=true
 ```
 
-runs the self test (the `dev` package) in a real game client. It plants a fixed scene, shows it in every shape and then day by day through autumn, winter and spring, checks what the chunk builder was handed and saves pictures to `run/screenshots/`. Put Sodium into `run/mods/` to test with Sodium. On a machine without a screen:
+runs the self test (the `dev` package) in a real game client. It plants a fixed scene, shows it in every shape and then day by day through autumn, winter and spring, checks what the chunk builder was handed, that the player's game holds the same blocks as the server and how bright it is under the crowns, and saves pictures to `run/screenshots/`. Put Sodium into `run/mods/` to test with Sodium. On a machine without a screen:
 
 ```
 LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x900x24" ./gradlew runClient -Pfoliage.selfTest=true

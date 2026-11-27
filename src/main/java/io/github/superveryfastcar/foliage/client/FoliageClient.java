@@ -1,14 +1,18 @@
 package io.github.superveryfastcar.foliage.client;
 
 import io.github.superveryfastcar.foliage.Foliage;
+import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
+import net.minecraft.core.registries.BuiltInRegistries;
+import net.minecraft.world.level.block.Block;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
 import net.neoforged.fml.event.config.ModConfigEvent;
+import net.neoforged.neoforge.client.event.RegisterColorHandlersEvent;
 import net.neoforged.neoforge.client.gui.ConfigurationScreen;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
@@ -37,6 +41,10 @@ public final class FoliageClient {
         modBus.addListener(LeafPartsSource::register);
         modBus.addListener(LeafModels::wrap);
 
+        // The bare blocks: their block state files, and the color of the leaves that are drawn on them.
+        modBus.addListener(BareBlockStates::addPack);
+        modBus.addListener(FoliageClient::registerColors);
+
         // The leaf calendar of the world the player is in.
         NeoForge.EVENT_BUS.addListener(ClientLeafClock::onTick);
         NeoForge.EVENT_BUS.addListener(ClientLeafClock::onLoggingOut);
@@ -45,6 +53,21 @@ public final class FoliageClient {
         // using NeoForge's built-in settings screen. The labels come from
         // the language file (foliage.configuration.*).
         container.registerExtensionPoint(IConfigScreenFactory.class, ConfigurationScreen::new);
+    }
+
+    /**
+     * Gives every bare block the color of its leaf. Leaves are drawn in
+     * gray and tinted by the game; a bare block still shows leaves on some
+     * days of the year, and those must have the tint of the tree.
+     */
+    private static void registerColors(RegisterColorHandlersEvent.Block event) {
+        for (Block block : BuiltInRegistries.BLOCK) {
+            if (block instanceof BareLeavesBlock bare) {
+                event.register((state, level, pos, tintIndex) -> level != null && pos != null
+                        ? bare.kind().foliageColorMultiplier(state, level, pos)
+                        : -1, bare);
+            }
+        }
     }
 
     /** Takes the settings file's values into use, when it was read or saved. */
