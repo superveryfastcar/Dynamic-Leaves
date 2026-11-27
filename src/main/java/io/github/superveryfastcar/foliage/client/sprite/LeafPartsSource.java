@@ -12,8 +12,8 @@ import io.github.superveryfastcar.foliage.shape.PictureShares;
 import io.github.superveryfastcar.seasons.api.client.SeasonsClientApi;
 import java.io.IOException;
 import java.util.List;
-import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.annotation.Nullable;
 import net.minecraft.client.renderer.texture.SpriteContents;
@@ -36,7 +36,7 @@ import net.neoforged.neoforge.client.event.RegisterSpriteSourceTypesEvent;
  * texture that is loaded at that moment:</p>
  * <ul>
  *   <li>the leaf pictures of the year ({@link LeafPicture}): the texture
- *       with a third, two thirds and nearly all of its leaves gone for
+ *       with a third, half and nearly all of its leaves gone for
  *       autumn, and with few and lighter leaves for spring;</li>
  *   <li>the round picture of a leaf card ({@link CardPicture}), in full
  *       leaf and for the first two pictures of autumn.</li>
@@ -53,14 +53,13 @@ import net.neoforged.neoforge.client.event.RegisterSpriteSourceTypesEvent;
  * another mod or of a resource pack; the game joins all of them):
  * <pre>
  * {"sources": [{"type": "foliage:leaf_parts", "leaves": [
- *     {"texture": "minecraft:block/oak_leaves", "twigs": "foliage:block/twigs_brown"}
+ *     {"texture": "minecraft:block/oak_leaves"}
  * ]}]}
  * </pre>
- * {@code texture} is the leaf texture. {@code twigs} names the set of twig
- * pictures that goes with it: the pictures {@code <twigs>_0},
- * {@code <twigs>_1} and so on, which must be ordinary block textures, and
- * the same twigs with buds on them, {@code <twigs>_buds_0} and so on. It
- * may be left out; then the brown twigs are used.
+ * {@code texture} is the leaf texture. (Up to version 0.4 an entry also
+ * named a set of flat twig pictures, {@code "twigs"}. Twigs are small
+ * branches in the tree's own bark now and need no pictures; a file that
+ * still names some is read as before and the name is not used.)
  *
  * <p>Next to {@code leaves}, a source may carry {@code "pictures"}: the
  * numbers the pictures of the year are made by ({@link PictureShares}),
@@ -74,12 +73,6 @@ public record LeafPartsSource(List<Leaves> leaves, PictureShares pictures) imple
 
     /** The name of this kind of source in atlas files. */
     public static final ResourceLocation ID = ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "leaf_parts");
-
-    /** The twig pictures used where none are named. */
-    public static final ResourceLocation DEFAULT_TWIGS = ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/twigs_brown");
-
-    /** The most twig pictures a set may have ({@code _0} to {@code _7}). */
-    public static final int MAX_TWIG_PICTURES = 8;
 
     /** How many pictures are made from one leaf texture: the leaf pictures of the year and their cards. */
     private static final int PARTS_PER_TEXTURE = partsPerTexture();
@@ -97,13 +90,11 @@ public record LeafPartsSource(List<Leaves> leaves, PictureShares pictures) imple
      * One listed leaf texture.
      *
      * @param texture the leaf texture, as models name it ({@code minecraft:block/oak_leaves})
-     * @param twigs   the set of twig pictures that goes with it
      */
-    public record Leaves(ResourceLocation texture, ResourceLocation twigs) {
+    public record Leaves(ResourceLocation texture) {
 
         static final Codec<Leaves> CODEC = RecordCodecBuilder.create(instance -> instance.group(
-                        ResourceLocation.CODEC.fieldOf("texture").forGetter(Leaves::texture),
-                        ResourceLocation.CODEC.optionalFieldOf("twigs", DEFAULT_TWIGS).forGetter(Leaves::twigs))
+                        ResourceLocation.CODEC.fieldOf("texture").forGetter(Leaves::texture))
                 .apply(instance, Leaves::new));
     }
 
@@ -117,11 +108,11 @@ public record LeafPartsSource(List<Leaves> leaves, PictureShares pictures) imple
     public static final SpriteSourceType TYPE = new SpriteSourceType(CODEC);
 
     /**
-     * The textures listed at the last loading of resources, each with its
-     * set of twig pictures. Filled while the atlas is put together (on a
-     * worker thread) and taken by the leaf models right after.
+     * The textures listed at the last loading of resources. Filled while
+     * the atlas is put together (on a worker thread) and taken by the leaf
+     * models right after.
      */
-    private static final Map<ResourceLocation, ResourceLocation> MADE = new ConcurrentHashMap<>();
+    private static final Set<ResourceLocation> MADE = ConcurrentHashMap.newKeySet();
 
     /** Tells the game about this kind of source. */
     public static void register(RegisterSpriteSourceTypesEvent event) {
@@ -150,18 +141,13 @@ public record LeafPartsSource(List<Leaves> leaves, PictureShares pictures) imple
         return which.cardSuffix() == null ? null : texture.withSuffix(which.cardSuffix());
     }
 
-    /** The set of twig pictures with buds that goes with a set of bare twig pictures. */
-    public static ResourceLocation budTwigs(ResourceLocation twigs) {
-        return twigs.withSuffix("_buds");
-    }
-
     /**
-     * Hands over the textures listed at the last loading of resources,
-     * each with its set of twig pictures, and forgets them.
+     * Hands over the textures listed at the last loading of resources and
+     * forgets them.
      */
-    public static Map<ResourceLocation, ResourceLocation> takeMade() {
-        Map<ResourceLocation, ResourceLocation> made = Map.copyOf(MADE);
-        MADE.keySet().removeAll(made.keySet());
+    public static Set<ResourceLocation> takeMade() {
+        Set<ResourceLocation> made = Set.copyOf(MADE);
+        MADE.removeAll(made);
         return made;
     }
 
@@ -189,7 +175,7 @@ public record LeafPartsSource(List<Leaves> leaves, PictureShares pictures) imple
                     output.add(card, new Part(texture, image, card, which, true, pictures));
                 }
             }
-            MADE.put(texture, entry.twigs());
+            MADE.add(texture);
         }
     }
 

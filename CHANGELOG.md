@@ -3,6 +3,55 @@
 All notable changes to Foliage, newest first. The version numbers are
 explained in the README under "Versions".
 
+## 0.5.0
+
+A better bare tree and a better fall, after the first pictures of 0.4.0.
+
+- **Small branches instead of flat twigs.** A leaf spot of a bare tree that
+  touches wood now holds a small branch in the bark of its own tree, built
+  the way Dynamic Trees builds its branches, only thinner: a main twig two
+  pixels thick that grows out of the wood into the leaf spot, and up to
+  three twigs one pixel thick that leave it in different directions.
+  Sixteen different ones, so neighbors do not look alike. The 24 flat twig
+  pictures and their script are gone; the bark is taken from the tree's
+  branch, whatever resource pack it comes from. New setting `twigForks`
+  (0 to 3). `winterTwigs = MORE` gives leaf spots deeper in the crown a
+  thinner small branch that grows out of the spot they hang on to.
+- **Leaf blocks get smaller as their leaves fall.** A leaf block first
+  thins, then draws back toward its branch as a smaller clump, then is a
+  small tuft of last leaves on the end of a twig, then is gone. The flat
+  planes of a few specks are gone, and so is the jump from specks to twigs.
+  The second leaf picture of autumn is fuller (half of the leaves gone
+  instead of two thirds). Last leaves hang on twigs or against a neighbor
+  that is still in leaf, never in the air next to a bare spot. Spring runs
+  the same way backward: a bud on the end of every main twig, a tuft of
+  first leaves there, a half-grown clump, the full crown. New settings
+  `fallSize`, `lastSize`, `budSize`.
+- **Birch sheds from the far edge inward now, like oak and dark oak.** It
+  used to go from the twigs outward, which left a ring of leaf blocks in
+  the air around a bare middle. The order is still a setting per kind
+  (`kinds` in `config/foliage-common.toml`). A settings file written by an
+  earlier version keeps its birch line: change `inside_out` to
+  `outside_in` there, or delete the file.
+- **Leaves let go when a leaf block changes in view.** A leaf block that
+  loses leaves while the player looks its way drops a few at that moment
+  (`burst` in the section `fallingLeaves`, default 3, 0 for none), under
+  the same cap as the other leaves in the air. Blocks behind the player
+  are skipped, and the look around is spread over ticks.
+- **What it costs.** A bare crown used to be nearly free (0.7 to 0.9 faces
+  per leaf block). Small branches are real boxes: winter now costs 3.0
+  (dark oak) to 3.9 (oak) faces per leaf block, half to two thirds of the
+  6 of the unmodded game. The costliest day of the year is 5.2 to 5.8, so
+  every tree stays under the 6 of the plain cubes on every day.
+  `twigForks` and `winterTwigs` bring winter down for those who need it
+  (`winterTwigs = NONE`: next to nothing); `winterTwigs = MORE` goes over
+  6 on some trees. The numbers are in `docs/measurements.md`.
+- The game's settings screen has names for the settings of the falling
+  leaves, which were missing in 0.4.0.
+- Resource packs and addons that listed `twigs` for their leaves in
+  `assets/minecraft/atlases/blocks.json` need not change anything: the
+  field is ignored.
+
 ## 0.4.0
 
 The rest of the year: the air, the tree itself, and the way out.

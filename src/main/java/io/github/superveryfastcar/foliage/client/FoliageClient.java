@@ -3,6 +3,7 @@ package io.github.superveryfastcar.foliage.client;
 import io.github.superveryfastcar.foliage.Foliage;
 import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.client.fall.FallingLeaves;
+import io.github.superveryfastcar.foliage.client.fall.LeafBursts;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -53,6 +54,8 @@ public final class FoliageClient {
         // The leaves that drift down from the crowns while the leaves fall.
         NeoForge.EVENT_BUS.addListener(FallingLeaves::onTick);
         NeoForge.EVENT_BUS.addListener(FallingLeaves::onLoggingOut);
+        NeoForge.EVENT_BUS.addListener(LeafBursts::onTick);
+        NeoForge.EVENT_BUS.addListener(LeafBursts::onLoggingOut);
 
         // Adds a "Config" button for Foliage in the game's Mods screen,
         // using NeoForge's built-in settings screen. The labels come from

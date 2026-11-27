@@ -15,14 +15,12 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
  *                 {@link LeafPicture} (only the first
  *                 {@link LeafPicture#CARD_COUNT}); all null if none could
  *                 be made for this texture (then no cards are drawn)
- * @param twigs    the bare twig pictures, growing from the middle of their
- *                 bottom edge; empty if there are none (then no twigs are drawn)
- * @param budTwigs the same twigs with buds on them, one per bare twig
- *                 picture; where a twig has no picture with buds, the bare
- *                 one stands in
+ * @param bark     the bark of the tree these leaves grow on, taken from
+ *                 the model of its branches, so that a mini branch is of
+ *                 the same wood as the branch it grows from; null if no
+ *                 bark could be found (then no mini branches are drawn)
  */
-record LeafSprites(TextureAtlasSprite[] leaves, TextureAtlasSprite[] cards, TextureAtlasSprite[] twigs,
-                   TextureAtlasSprite[] budTwigs) {
+record LeafSprites(TextureAtlasSprite[] leaves, TextureAtlasSprite[] cards, @Nullable TextureAtlasSprite bark) {
 
     /** The leaf texture of the block itself. */
     TextureAtlasSprite leaf() {

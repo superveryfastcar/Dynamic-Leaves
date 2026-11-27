@@ -10,6 +10,7 @@ import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.client.fall.FallingLeaves;
+import io.github.superveryfastcar.foliage.client.fall.LeafBursts;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
@@ -112,6 +113,15 @@ public final class DevSelfTest {
     /** True when the self test was asked for on the command line. */
     private static final boolean ENABLED = Boolean.getBoolean("foliage.dev.selfTest");
 
+    /**
+     * For a quick set of pictures: the starts of the names of the looks to
+     * go through, with commas between them
+     * ({@code -Pfoliage.only=autumn-10,winter-1}); empty for all of them.
+     * A run of only some looks cannot hold the checks that compare one
+     * look with another, so its result says that it was a part.
+     */
+    private static final String ONLY = System.getProperty("foliage.dev.only", "");
+
     /** True if Sodium is loaded too. Then its chunk builder is the one being checked. */
     private static final boolean SODIUM = ModList.get().isLoaded("sodium");
 
@@ -199,7 +209,7 @@ public final class DevSelfTest {
 
     private static final String SUMMER = "summer 7";
 
-    private static final List<Shot> SHOTS = List.of(
+    private static final List<Shot> SHOTS = chosen(List.of(
             // Every shape, in summer.
             Shot.summer("plain", ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true),
             Shot.summer("shell", ShapeSettings.DEFAULT.withShape(LeafShape.SHELL), true),
@@ -240,7 +250,24 @@ public final class DevSelfTest {
             Shot.day("spring 5", Time.RETURN, 3),
             Shot.day("spring 6", Time.RETURN, 3),
             Shot.day("spring 7", Time.RETURN, 3),
-            Shot.day("spring 8", Time.FULL, 3));
+            Shot.day("spring 8", Time.FULL, 3)));
+
+    /** The looks to go through: all of them, or those {@link #ONLY} names. */
+    private static List<Shot> chosen(List<Shot> all) {
+        if (ONLY.isBlank()) {
+            return all;
+        }
+        List<Shot> some = new ArrayList<>();
+        for (Shot one : all) {
+            for (String start : ONLY.split(",")) {
+                if (!start.isBlank() && one.name().startsWith(start.trim())) {
+                    some.add(one);
+                    break;
+                }
+            }
+        }
+        return some;
+    }
 
     /**
      * The most faces per leaf block a shape may hand to the chunk builder
@@ -632,12 +659,6 @@ public final class DevSelfTest {
                 expect("a thinned leaf card (" + which + ") was made for " + kind, atlas.getSprite(name).contents().name().equals(name));
             }
         }
-        for (String twigs : List.of("twigs_brown", "twigs_birch", "twigs_dark")) {
-            ResourceLocation name = ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/" + twigs + "_0");
-            expect("the twig pictures " + twigs + " are loaded", atlas.getSprite(name).contents().name().equals(name));
-            ResourceLocation buds = LeafPartsSource.budTwigs(ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/" + twigs)).withSuffix("_0");
-            expect("and the same twigs with buds", atlas.getSprite(buds).contents().name().equals(buds));
-        }
         // The leaves that drift down are drawn from the block pictures
         // (FallingLeaf.getRenderType). If one of them were not in there,
         // the game would hand out its "missing picture" instead, and every
@@ -721,8 +742,12 @@ public final class DevSelfTest {
         long[] counted = LeafModels.counters();
         double faces = counted[1] / (double) Math.max(1, counted[0]);
         double slanted = counted[2] / (double) Math.max(1, counted[0]);
-        log(String.format(Locale.ROOT, "%s at %s: leaf blocks %d, faces %d, faces per leaf block %.2f, slanted %.2f; recipes kept %d; %s",
-                name, current.date(), counted[0], counted[1], faces, slanted, LeafModels.recipeCount(), sodiumCounters()));
+        double bark = counted[3] / (double) Math.max(1, counted[0]);
+        log(String.format(Locale.ROOT, "%s at %s: leaf blocks %d, faces %d, faces per leaf block %.2f (of them mini branches %.2f), slanted %.2f; "
+                        + "recipes kept %d; %s",
+                name, current.date(), counted[0], counted[1], faces, bark, slanted, LeafModels.recipeCount(), sodiumCounters()));
+        log(String.format(Locale.ROOT, "%s: leaves let go by spots that changed in view so far: %d from %d spots, in %.2f ms",
+                name, LeafBursts.made(), LeafBursts.spots(), LeafBursts.nanos() / 1.0e6));
         if (current.gentle()) {
             expect(name + ": after the date changed, the landscape was drawn again on its own (" + counted[0] + " leaf blocks)", counted[0] > 15000);
         } else {
@@ -756,7 +781,7 @@ public final class DevSelfTest {
             LeafStage stage = LeafStage.FULL;
             if (recipe != Recipe.NONE) {
                 ours++;
-                agree += handedOut == Recipe.quadCount(recipe) ? 1 : 0;
+                agree += handedOut == Recipe.quadCount(recipe, LeafModels.settings().forks()) ? 1 : 0;
                 stage = Recipe.stage(recipe);
             } else {
                 agree += handedOut == 6 ? 1 : 0;
@@ -899,21 +924,27 @@ public final class DevSelfTest {
             return;
         }
 
-        // A day of the year: never more faces than the unmodded game, far fewer in winter.
+        // A day of the year: the leaves never need more faces than the unmodded game. The mini branches come on top.
         boolean rich = current.settings().maxFaces() > ShapeSettings.DEFAULT.maxFaces();
         if (!rich) {
-            expect(String.format(Locale.ROOT, "%s: at most 6 faces per leaf block (%.2f)", name, faces), faces <= 6.0);
+            expect(String.format(Locale.ROOT, "%s: at most 6 faces of leaves per leaf block (%.2f, and %.2f of mini branches)", name, faces - bark, bark),
+                    faces - bark <= 6.0);
         }
         if (!current.fancy()) {
-            expect(String.format(Locale.ROOT, "%s: only outer faces are drawn (%.2f per leaf block, none at a slant)", name, faces),
-                    faces < 3.5 && counted[2] == 0);
+            expect(String.format(Locale.ROOT, "%s: no flat pictures are drawn where leaves are not see-through (%.2f faces per leaf block, none at a slant)",
+                    name, faces), faces <= 6.0 && counted[2] == 0);
         } else if (time == Time.BARE) {
-            expect(String.format(Locale.ROOT, "%s: bare trees need few faces (%.2f per leaf block)", name, faces), faces < 2.0);
             if (current.settings().winterTwigs() == WinterTwigs.NONE) {
                 // The other kinds of trees keep their leaves and their cards; the big oak has nothing left.
+                expect(String.format(Locale.ROOT, "%s: bare trees without twigs need few faces (%.2f per leaf block)", name, faces), faces < 2.0 && bark == 0);
                 expect(name + ": without twigs the big oak draws nothing", oakFaces == 0);
+            } else if (current.settings().winterTwigs() == WinterTwigs.NEAR) {
+                expect(String.format(Locale.ROOT, "%s: bare trees need fewer faces than the 6 of the unmodded game (%.2f per leaf block)", name, faces),
+                        faces < 6.0 && bark > 0);
+                expect(String.format(Locale.ROOT, "%s: the big oak shows mini branches (%.2f faces per leaf block)", name, perOakLeaf),
+                        oakFaces > 0 && perOakLeaf < 6.0);
             } else {
-                expect(String.format(Locale.ROOT, "%s: the big oak shows twigs (%.2f faces per leaf block)", name, perOakLeaf), oakFaces > 0 && perOakLeaf < 2.0);
+                expect(String.format(Locale.ROOT, "%s: with more twigs the big oak shows more of them (%.2f faces per leaf block)", name, perOakLeaf), oakFaces > 0);
             }
         }
 
@@ -983,10 +1014,11 @@ public final class DevSelfTest {
             expect(String.format(Locale.ROOT, "%s: fewer faces than the plain look (%.2f against %.2f)", name, faces, plainFaces), faces < plainFaces);
         }
         expect(String.format(Locale.ROOT, "%s: at most %.1f slanted faces per leaf block (%.2f)", name, slantedLimit, slanted), slanted <= slantedLimit);
-        boolean slantedExpected = !current.settings().fastLeaves() && current.settings().shape() != LeafShape.SHELL
-                && (rich || current.settings().shape() != LeafShape.TUFTS);
+        // Only cards stand at a slant; a stick under a clump is a box along the block's sides.
+        boolean slantedExpected = !current.settings().fastLeaves()
+                && (current.settings().shape() == LeafShape.BUSHY || current.settings().shape() == LeafShape.MIXED);
         if (slantedExpected) {
-            expect(name + ": cards or twigs are drawn", counted[2] > 0);
+            expect(name + ": cards are drawn", counted[2] > 0);
         } else {
             expect(name + ": nothing drawn at a slant", counted[2] == 0);
         }
@@ -1102,12 +1134,19 @@ public final class DevSelfTest {
                 walked[LeafWalker.TO_BARE], walked[LeafWalker.TO_LEAF], walked[LeafWalker.CHUNKS_LOOKED],
                 walked[LeafWalker.SECTIONS_COUNTED], walked[LeafWalker.SECTIONS_SEARCHED], walked[LeafWalker.ROUNDS],
                 walked[LeafWalker.NANOS] / 1.0e6, walked[LeafWalker.SNOW_LANDED], walked[LeafWalker.FRUIT_DROPPED]));
-        expect("leaves come down while the leaves fall (" + leavesWhileFalling + " over the days of the fall)",
-                leavesWhileFalling > 0);
+        log(String.format(Locale.ROOT, "leaves let go by spots that changed in view over the whole run: %d from %d spots, in %.2f ms in all",
+                LeafBursts.made(), LeafBursts.spots(), LeafBursts.nanos() / 1.0e6));
+        String part = ONLY.isBlank() ? "" : " (ONLY A PART OF THE LOOKS: " + ONLY + ")";
+        if (ONLY.isBlank()) {
+            expect("leaves come down while the leaves fall (" + leavesWhileFalling + " over the days of the fall)",
+                    leavesWhileFalling > 0);
+            expect("leaf spots that change in view let go of leaves (" + LeafBursts.made() + " from " + LeafBursts.spots() + " spots)",
+                    LeafBursts.made() > 0 && LeafBursts.spots() > 0);
+        }
         if (FAILURES.isEmpty()) {
-            log("RESULT: PASSED, " + passed + " checks, " + Math.max(0, shot) + " looks photographed");
+            log("RESULT: PASSED" + part + ", " + passed + " checks, " + Math.max(0, shot) + " looks photographed");
         } else {
-            log("RESULT: FAILED, " + FAILURES.size() + " of " + (passed + FAILURES.size()) + " checks: " + FAILURES);
+            log("RESULT: FAILED" + part + ", " + FAILURES.size() + " of " + (passed + FAILURES.size()) + " checks: " + FAILURES);
         }
         minecraft.stop();
     }

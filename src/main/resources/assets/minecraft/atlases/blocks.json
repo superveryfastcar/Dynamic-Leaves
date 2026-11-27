@@ -3,16 +3,16 @@
     {
       "type": "foliage:leaf_parts",
       "leaves": [
-        {"texture": "minecraft:block/oak_leaves", "twigs": "foliage:block/twigs_brown"},
-        {"texture": "minecraft:block/birch_leaves", "twigs": "foliage:block/twigs_birch"},
-        {"texture": "minecraft:block/dark_oak_leaves", "twigs": "foliage:block/twigs_dark"},
-        {"texture": "minecraft:block/spruce_leaves", "twigs": "foliage:block/twigs_dark"},
-        {"texture": "minecraft:block/jungle_leaves", "twigs": "foliage:block/twigs_brown"},
-        {"texture": "minecraft:block/acacia_leaves", "twigs": "foliage:block/twigs_brown"},
-        {"texture": "minecraft:block/mangrove_leaves", "twigs": "foliage:block/twigs_brown"},
-        {"texture": "minecraft:block/cherry_leaves", "twigs": "foliage:block/twigs_dark"},
-        {"texture": "minecraft:block/azalea_leaves", "twigs": "foliage:block/twigs_brown"},
-        {"texture": "minecraft:block/flowering_azalea_leaves", "twigs": "foliage:block/twigs_brown"}
+        {"texture": "minecraft:block/oak_leaves"},
+        {"texture": "minecraft:block/birch_leaves"},
+        {"texture": "minecraft:block/dark_oak_leaves"},
+        {"texture": "minecraft:block/spruce_leaves"},
+        {"texture": "minecraft:block/jungle_leaves"},
+        {"texture": "minecraft:block/acacia_leaves"},
+        {"texture": "minecraft:block/mangrove_leaves"},
+        {"texture": "minecraft:block/cherry_leaves"},
+        {"texture": "minecraft:block/azalea_leaves"},
+        {"texture": "minecraft:block/flowering_azalea_leaves"}
       ]
     }
   ]

@@ -39,6 +39,11 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  * whether one tree or a forest is in view, and it finds the trees nearest
  * to the player most often, because there is more of them close by.</p>
  *
+ * <p>On top of this steady fall, a leaf block gives off a few leaves in
+ * the moment it thins, shrinks or goes bare in view of the player. That
+ * is {@link LeafBursts}; its leaves are made here and count toward the
+ * same limit.</p>
+ *
  * <h2>What it costs</h2>
  * Outside the days when leaves fall this class does nothing at all: the
  * leaf calendar is asked first, and in summer and winter it answers in one
@@ -216,19 +221,29 @@ public final class FallingLeaves {
     /** Starts one leaf under a leaf block. */
     private static void start(ClientLevel level, BlockState state, int x, int y, int z, RandomSource random) {
         CURSOR.set(x, y, z);
-        int color = Minecraft.getInstance().getBlockColors().getColor(state, level, CURSOR, 0);
+        startAt(level, state, CURSOR, x + random.nextDouble(), y - BELOW, z + random.nextDouble(), random);
+    }
+
+    /**
+     * Starts one leaf at a place, in the color the leaves of a leaf block
+     * have that day, and counts it. Whoever calls this looks at the
+     * player's limit first ({@link #alive}, {@link FallSettings#most}).
+     *
+     * @param state the leaf block the leaf comes from (or its bare block)
+     * @param pos   where that block stands
+     * @param x     where the leaf starts
+     * @param y     where the leaf starts
+     * @param z     where the leaf starts
+     */
+    static void startAt(ClientLevel level, BlockState state, BlockPos pos, double x, double y, double z, RandomSource random) {
+        int color = Minecraft.getInstance().getBlockColors().getColor(state, level, pos, 0);
         if (color == -1) {
-            color = BiomeColors.getAverageFoliageColor(level, CURSOR);
+            color = BiomeColors.getAverageFoliageColor(level, pos);
         }
         TextureAtlasSprite picture = Minecraft.getInstance()
                 .getTextureAtlas(TextureAtlas.LOCATION_BLOCKS)
                 .apply(PICTURES[random.nextInt(PICTURES.length)]);
-        FallingLeaf leaf = new FallingLeaf(level,
-                x + random.nextDouble(),
-                y - BELOW,
-                z + random.nextDouble(),
-                color, picture);
-        Minecraft.getInstance().particleEngine.add(leaf);
+        Minecraft.getInstance().particleEngine.add(new FallingLeaf(level, x, y, z, color, picture));
         alive++;
         made++;
     }

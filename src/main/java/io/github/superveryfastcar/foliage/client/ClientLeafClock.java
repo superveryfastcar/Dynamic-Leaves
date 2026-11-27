@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.client;
 
 import io.github.superveryfastcar.calendar.api.Calendar;
 import io.github.superveryfastcar.calendar.api.CalendarRules;
+import io.github.superveryfastcar.foliage.client.fall.LeafBursts;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
 import io.github.superveryfastcar.foliage.season.LeafClock;
 import io.github.superveryfastcar.foliage.season.SeasonSettings;
@@ -26,7 +27,9 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  * the landscape again, gently and nearest first
  * ({@link SeasonsClientApi#requestRedraw}). Seasons does that at the end
  * of the same tick, together with its own change of colors if one is due,
- * so the landscape is not drawn twice.
+ * so the landscape is not drawn twice. It also tells {@link LeafBursts},
+ * which lets the leaf spots that just lost leaves in view of the player
+ * give off a few, so that the change does not come as a sudden swap.
  *
  * <p>In summer and in winter a new step changes nothing, and nothing is
  * drawn again.</p>
@@ -81,6 +84,8 @@ public final class ClientLeafClock {
         boolean changed = now != null ? now.looksDifferentFrom(before) : before.looksDifferentFrom(null);
         if (changed && level != null) {
             SeasonsClientApi.requestRedraw();
+            // Leaf spots that lose leaves by this step, near the player and in view, give off a few.
+            LeafBursts.onStep(before, now);
         }
     }
 

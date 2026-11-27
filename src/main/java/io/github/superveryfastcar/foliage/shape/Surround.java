@@ -1,5 +1,7 @@
 package io.github.superveryfastcar.foliage.shape;
 
+import com.dtteam.dynamictrees.block.branch.BranchBlock;
+import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import javax.annotation.Nullable;
 import net.minecraft.core.BlockPos;
@@ -26,7 +28,11 @@ import net.minecraft.world.level.block.state.BlockState;
  *       top, for example a layer of snow;</li>
  *   <li>bit 13: the block is sheltered: each of its six neighbors is a
  *       leaf block or a full, solid block, so it sits inside its crown
- *       whatever the season.</li>
+ *       whatever the season;</li>
+ *   <li>bit 14: the branch that touches the block has wood right at the
+ *       block's side ({@link #woodReaches});</li>
+ *   <li>bit 15: the leaf block toward the heart has no leaves to speak of
+ *       at the moment ({@link #heartBare}).</li>
  * </ul>
  *
  * <h2>Open and covered</h2>
@@ -37,7 +43,8 @@ import net.minecraft.world.level.block.state.BlockState;
  * <p>While leaves fall or come back, a neighboring leaf block may show few
  * leaves or none. The caller then passes a {@link LeafCover} that knows
  * the neighbor's look, and a side toward a leaf block that does not cover
- * counts as open.</p>
+ * counts as open. The same answer says whether the neighbor toward the
+ * heart still carries leaves that a small clump can sit against.</p>
  *
  * <h2>Deeper in the crown</h2>
  * Dynamic Trees keeps for every leaf block how well it is supplied from
@@ -54,11 +61,25 @@ public final class Surround {
     private static final int HEART_SHIFT = 9;
     private static final int LOADED_BIT = 1 << 12;
     private static final int SHELTERED_BIT = 1 << 13;
+    private static final int REACHES_BIT = 1 << 14;
+    private static final int HEART_BARE_BIT = 1 << 15;
+
+    /** A neighboring leaf block hides what lies behind it: it is in full leaf or nearly so. */
+    public static final int COVERS = 2;
+
+    /** A neighboring leaf block has a good part of its leaves, but can be seen through. */
+    public static final int LEAVES = 1;
+
+    /** A neighboring leaf block has no leaves to speak of: none, buds, or a last or first few. */
+    public static final int NOTHING = 0;
+
+    /** The radius, in pixels, from which a branch of Dynamic Trees fills its whole block. */
+    private static final int FULL_RADIUS = 8;
 
     private static final Direction[] DIRECTIONS = Direction.values();
 
     /**
-     * Says whether a neighboring leaf block hides what lies behind it.
+     * Says how much of a neighboring leaf block is there at the moment.
      * Asked once per leaf block next to the one that is being read.
      */
     @FunctionalInterface
@@ -69,13 +90,15 @@ public final class Surround {
          * @param x     its position
          * @param y     its position
          * @param z     its position
-         * @return true if nothing can be seen through it
+         * @return {@link #COVERS} if nothing can be seen through it,
+         *         {@link #LEAVES} if it has a good part of its leaves, and
+         *         {@link #NOTHING} if it has none to speak of
          */
-        boolean covers(BlockState state, int x, int y, int z);
+        int leaves(BlockState state, int x, int y, int z);
     }
 
     /** For the plain look of the unmodded game, where leaf blocks draw their faces toward each other: no leaf block covers. */
-    public static final LeafCover NO_LEAF_COVERS = (state, x, y, z) -> false;
+    public static final LeafCover NO_LEAF_COVERS = (state, x, y, z) -> LEAVES;
 
     private Surround() {
     }
@@ -116,8 +139,8 @@ public final class Surround {
      * @param pos   the leaf block
      * @param state the leaf block's state
      * @param near  a position holder to work with; what it held is lost
-     * @param cover says for each neighboring leaf block whether it covers
-     *              the side toward it; null if all leaf blocks do
+     * @param cover says for each neighboring leaf block how much of it is
+     *              there; null if all leaf blocks are in full leaf
      * @return the packed surroundings, see the class notes
      */
     public static int read(BlockGetter level, BlockPos pos, BlockState state, BlockPos.MutableBlockPos near,
@@ -129,22 +152,27 @@ public final class Surround {
         int heart = 0;
         boolean loaded = false;
         boolean sheltered = true;
+        boolean reaches = false;
+        boolean heartBare = false;
         for (Direction direction : DIRECTIONS) {
             near.setWithOffset(pos, direction);
             BlockState other = level.getBlockState(near);
             boolean covered;
             if (other.getBlock() instanceof LeavesBlock) {
-                covered = cover == null || cover.covers(other, near.getX(), near.getY(), near.getZ());
+                int there = cover == null ? COVERS : cover.leaves(other, near.getX(), near.getY(), near.getZ());
+                covered = there == COVERS;
                 int depth = depth(other);
                 if (depth > deepest) {
                     deepest = depth;
                     heart = 1 + direction.ordinal();
+                    heartBare = there == NOTHING;
                 }
             } else {
                 covered = other.isSolidRender(level, near);
                 sheltered &= covered;
                 if (wood == 0 && TreeHelper.isBranch(other)) {
                     wood = 1 + direction.ordinal();
+                    reaches = reaches(level, pos, state, other, direction);
                 }
                 if (direction == Direction.UP && !covered && !other.isAir()) {
                     loaded = true;
@@ -154,7 +182,39 @@ public final class Surround {
                 open |= 1 << direction.ordinal();
             }
         }
-        return open | wood << WOOD_SHIFT | heart << HEART_SHIFT | (loaded ? LOADED_BIT : 0) | (sheltered ? SHELTERED_BIT : 0);
+        return open | wood << WOOD_SHIFT | heart << HEART_SHIFT | (loaded ? LOADED_BIT : 0) | (sheltered ? SHELTERED_BIT : 0)
+                | (reaches ? REACHES_BIT : 0) | (heartBare ? HEART_BARE_BIT : 0);
+    }
+
+    /**
+     * Whether a branch next to a leaf block has wood right at the side
+     * the two share.
+     *
+     * <p>A branch of Dynamic Trees is a stick through the middle of its
+     * block, so its bark usually lies some pixels behind the block's side.
+     * Two kinds of branch do come all the way: one so thick that it fills
+     * its block, and a thin one that Dynamic Trees joins to its leaves
+     * with a stub. Dynamic Trees decides about the stub by asking the leaf
+     * block which radius it wants to be joined with; the same question is
+     * asked here, so the answer is the one the branch is drawn by.</p>
+     *
+     * @param level     the blocks around
+     * @param pos       the leaf block
+     * @param state     the leaf block's state
+     * @param branch    the branch next to it
+     * @param direction the side of the leaf block the branch is on
+     */
+    private static boolean reaches(BlockGetter level, BlockPos pos, BlockState state, BlockState branch, Direction direction) {
+        BranchBlock wood = TreeHelper.getBranch(branch);
+        if (wood == null) {
+            return false;
+        }
+        int radius = wood.getRadius(branch);
+        if (radius >= FULL_RADIUS) {
+            return true;
+        }
+        return state.getBlock() instanceof DynamicLeavesBlock leaves
+                && leaves.getRadiusForConnection(state, level, pos, wood, direction.getOpposite(), radius) > 0;
     }
 
     /**
@@ -170,6 +230,23 @@ public final class Surround {
                 | (wood == null ? 0 : 1 + wood.ordinal()) << WOOD_SHIFT
                 | (heart == null ? 0 : 1 + heart.ordinal()) << HEART_SHIFT
                 | (loaded ? LOADED_BIT : 0);
+    }
+
+    /**
+     * The same surroundings, with the branch that touches the block
+     * marked as having wood right at the block's side or not
+     * ({@link #woodReaches}). For tests.
+     */
+    public static int woodReaches(int surround, boolean reaches) {
+        return reaches ? surround | REACHES_BIT : surround & ~REACHES_BIT;
+    }
+
+    /**
+     * The same surroundings, with the leaf block toward the heart marked
+     * as having leaves or none to speak of ({@link #heartBare}). For tests.
+     */
+    public static int heartBare(int surround, boolean bare) {
+        return bare ? surround | HEART_BARE_BIT : surround & ~HEART_BARE_BIT;
     }
 
     /**
@@ -213,11 +290,45 @@ public final class Surround {
         return code == 0 ? null : DIRECTIONS[code - 1];
     }
 
+    /**
+     * Whether the branch that touches the block ({@link #wood}) has wood
+     * right at the side the two share: a thin branch that Dynamic Trees
+     * joins to its leaves with a stub, or one so thick that it fills its
+     * block. False for a thicker branch, whose bark lies behind the side,
+     * and when no branch touches the block.
+     *
+     * <p>A mini branch that grows from the branch starts at the side in
+     * the first case and has to reach back into the wood in the second
+     * ({@link MiniBranch}).</p>
+     */
+    public static boolean woodReaches(int surround) {
+        return (surround & REACHES_BIT) != 0;
+    }
+
     /** The side toward the inside of the crown, or null if no neighbor lies deeper. */
     @Nullable
     public static Direction heart(int surround) {
         int code = surround >> HEART_SHIFT & 7;
         return code == 0 ? null : DIRECTIONS[code - 1];
+    }
+
+    /**
+     * Whether the leaf block toward the heart has no leaves to speak of at
+     * the moment: none, buds, or only a last or first few. A small clump
+     * of last or first leaves that would sit against it would hang in the
+     * air, so it is not drawn.
+     */
+    public static boolean heartBare(int surround) {
+        return (surround & HEART_BARE_BIT) != 0;
+    }
+
+    /**
+     * Whether the side this block hangs on to ({@link #support}) is a leaf
+     * block that has no leaves to speak of at the moment. Never true for a
+     * block that hangs on to wood.
+     */
+    public static boolean supportBare(int surround) {
+        return (surround >> WOOD_SHIFT & 7) == 0 && (surround >> HEART_SHIFT & 7) != 0 && (surround & HEART_BARE_BIT) != 0;
     }
 
     /** Whether something that is not a leaf rests on top (a layer of snow, say). */

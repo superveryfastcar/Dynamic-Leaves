@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.gametest;
 
 import static io.github.superveryfastcar.foliage.gametest.FoliageGameTests.check;
 
+import com.dtteam.dynamictrees.block.branch.BranchBlock;
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import com.google.gson.JsonParser;
 import com.mojang.serialization.JsonOps;
@@ -20,6 +21,7 @@ import io.github.superveryfastcar.foliage.shape.LeafLook;
 import io.github.superveryfastcar.foliage.shape.LeafPicture;
 import io.github.superveryfastcar.foliage.shape.LeafPictures;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
+import io.github.superveryfastcar.foliage.shape.MiniBranch;
 import io.github.superveryfastcar.foliage.shape.PictureShares;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeRules;
@@ -73,7 +75,11 @@ public final class LeafCalendarGameTests {
     /** The seasons of the Calendar mod as it ships: four of 14 days, the year starts with spring. */
     private static final CalendarRules YEAR = CalendarRules.DEFAULT;
 
-    /** The schedules of the three kinds that shed by default. */
+    /**
+     * The schedules of the three kinds that shed by default. The birch of
+     * these tests sheds from the twigs outward, the other order, so that
+     * both orders are tested; the mod's own birch goes the usual way.
+     */
     private static final LeafSchedule BIRCH = new LeafSchedule(0, TreeOrder.INSIDE_OUT);
     private static final LeafSchedule OAK = new LeafSchedule(1, TreeOrder.OUTSIDE_IN);
     private static final LeafSchedule DARK_OAK = new LeafSchedule(2, TreeOrder.OUTSIDE_IN);
@@ -407,7 +413,7 @@ public final class LeafCalendarGameTests {
         check(standard.enabled() && standard.fallDays() == 7.0 && standard.returnDays() == 7.0,
                 "the mod's own rules: leaves fall over 7 days and come back over 7");
         check(standard.kinds().size() == 3
-                        && BIRCH.equals(standard.kinds().get(ResourceLocation.parse("dynamictrees:birch_leaves")))
+                        && new LeafSchedule(0, TreeOrder.OUTSIDE_IN).equals(standard.kinds().get(ResourceLocation.parse("dynamictrees:birch_leaves")))
                         && OAK.equals(standard.kinds().get(ResourceLocation.parse("dynamictrees:oak_leaves")))
                         && DARK_OAK.equals(standard.kinds().get(ResourceLocation.parse("dynamictrees:dark_oak_leaves"))),
                 "oak, birch and dark oak shed: " + standard.kinds());
@@ -416,7 +422,7 @@ public final class LeafCalendarGameTests {
         }
         // The lines of the settings file.
         List<String> lines = SeasonSettings.defaultKindLines();
-        check(lines.size() == 3 && lines.contains("dynamictrees:oak_leaves, 1, outside_in") && lines.contains("dynamictrees:birch_leaves, 0, inside_out"),
+        check(lines.size() == 3 && lines.contains("dynamictrees:oak_leaves, 1, outside_in") && lines.contains("dynamictrees:birch_leaves, 0, outside_in"),
                 "the kinds as lines: " + lines);
         check(SeasonSettings.parseKinds(lines).equals(standard.kinds()), "lines read back give the same kinds");
         check(SeasonSettings.isKindLine("some_mod:maple_leaves") && SeasonSettings.isKindLine(" a:b , 2.5 , INSIDE_OUT "), "day and order may be left out, spaces and capitals do not matter");
@@ -469,8 +475,9 @@ public final class LeafCalendarGameTests {
 
     /**
      * What a leaf block is drawn from at every stage, for every possible
-     * set of open sides, with and without wood, a heart side, snow on top
-     * and a twig, in every shape, at the lowest and the highest limit.
+     * set of open sides, with and without wood (that comes to the block's
+     * side or does not), a heart side, snow on top and a mini branch, in
+     * every shape, at the lowest and the highest limit.
      */
     @GameTest(template = "empty", batch = "foliage_calendar")
     public static void piecesAtEveryStage(GameTestHelper helper) {
@@ -486,6 +493,14 @@ public final class LeafCalendarGameTests {
                                     int around = Surround.of(open, wood < 0 ? null : DIRECTIONS[wood], heart < 0 ? null : DIRECTIONS[heart], loaded == 1);
                                     for (int variant = 0; variant < Recipe.VARIANTS; variant += 5) {
                                         checkPieces(settings, around, variant);
+                                        // Next to a branch whose wood comes right to the block's side.
+                                        if (wood >= 0) {
+                                            checkPieces(settings, Surround.woodReaches(around, true), variant);
+                                        }
+                                        // The leaf block it hangs on to has lost its leaves or does not have them yet.
+                                        if (heart >= 0) {
+                                            checkPieces(settings, Surround.heartBare(around, true), variant);
+                                        }
                                         // Inside a crown: no branch touches, nothing but leaves and full blocks around.
                                         if (wood < 0 && loaded == 0) {
                                             checkPieces(settings, Surround.sheltered(around, true), variant);
@@ -498,7 +513,15 @@ public final class LeafCalendarGameTests {
                 }
             }
         }
-        // Which spots have a twig.
+        // Without buds, and with fewer thinner twigs.
+        for (int open = 1; open < 64; open += 7) {
+            int around = Surround.of(open, Direction.DOWN, null, false);
+            checkPieces(standard.withBudSize(0), around, 3);
+            for (int forks = 0; forks <= MiniBranch.MAX_FORKS; forks++) {
+                checkPieces(standard.withTwigForks(forks), around, 3);
+            }
+        }
+        // Which spots have a mini branch.
         for (int depth = 1; depth <= 7; depth++) {
             for (int wood = -1; wood < 6; wood++) {
                 int around = Surround.of(12, wood < 0 ? null : DIRECTIONS[wood], Direction.DOWN, false);
@@ -506,9 +529,21 @@ public final class LeafCalendarGameTests {
                 check(ShapeRules.twigSpot(standard.withWinterTwigs(WinterTwigs.NEAR), around, depth) == (wood >= 0), "twigs near branches: where a branch touches");
                 check(ShapeRules.twigSpot(standard.withWinterTwigs(WinterTwigs.MORE), around, depth) == (wood >= 0 || depth >= standard.twigDepth()),
                         "more twigs: where a branch touches, or deep in the crown");
+                // Deep in the crown, but with no leaf spot to grow out of: none.
+                int alone = Surround.of(12, wood < 0 ? null : DIRECTIONS[wood], null, false);
+                check(ShapeRules.twigSpot(standard.withWinterTwigs(WinterTwigs.MORE), alone, depth) == (wood >= 0),
+                        "more twigs: a spot that touches no wood needs a deeper leaf spot to grow out of");
+                // Where a mini branch starts.
+                int expected = wood < 0 ? MiniBranch.DEEP : MiniBranch.REACH;
+                check(ShapeRules.twigBase(around) == expected, "a mini branch starts inside a branch whose bark lies behind the side, "
+                        + "and in the middle of a leaf spot where there is no wood");
+                check(ShapeRules.twigBase(Surround.woodReaches(around, true)) == (wood < 0 ? MiniBranch.DEEP : MiniBranch.FLUSH),
+                        "and at the block's side where the wood comes that far");
             }
         }
         check(standard.winterTwigs() == WinterTwigs.NEAR && standard.twigDepth() == 3, "the mod's own choice: twigs near branches");
+        check(standard.twigForks() == MiniBranch.MAX_FORKS && standard.budSize() == 4 && standard.fallSize() == 12 && standard.lastSize() == 8,
+                "the mod's own choice: three thinner twigs, buds of 4, clumps of 12 and 8 in autumn");
         helper.succeed();
     }
 
@@ -516,87 +551,145 @@ public final class LeafCalendarGameTests {
     private static void checkPieces(ShapeSettings settings, int around, int variant) {
         int open = Surround.open(around);
         int openCount = Integer.bitCount(open);
+        int forks = settings.forks();
         boolean plain = settings.shape() == LeafShape.PLAIN;
         Direction support = Surround.loaded(around) ? null : Surround.support(around);
         Direction grow = Surround.grow(around);
         boolean sheltered = Surround.sheltered(around);
+        int base = ShapeRules.twigBase(around);
+        int branchFaces = MiniBranch.faceCount(base, forks);
         check(!Surround.sheltered(Surround.sheltered(around, false)) && Surround.sheltered(Surround.sheltered(around, true))
                 && Surround.open(Surround.sheltered(around, true)) == open, "the shelter mark is kept and changes nothing else");
+        check(Surround.woodReaches(Surround.woodReaches(around, true)) && !Surround.woodReaches(Surround.woodReaches(around, false))
+                && Surround.open(Surround.woodReaches(around, true)) == open && Surround.wood(Surround.woodReaches(around, true)) == Surround.wood(around),
+                "the mark for wood at the block's side is kept and changes nothing else");
         int full = ShapeRules.recipe(settings, around, variant, LeafStage.FULL, false);
         check(full == ShapeRules.recipe(settings, around, variant), "in full leaf: the recipe of the shapes");
         if (sheltered && open != 0) {
             // Seen between neighbors that have lost their leaves: the outside of the block and nothing more.
-            check(Recipe.faces(full) && Recipe.quadCount(full) == openCount, "in leaf inside the crown: outer faces only, open " + open);
+            check(Recipe.faces(full) && Recipe.quadCount(full, forks) == openCount, "in leaf inside the crown: outer faces only, open " + open);
         }
         for (LeafStage stage : LeafStage.values()) {
             for (int twig = 0; twig < 2; twig++) {
                 boolean twigSpot = twig == 1;
                 int recipe = ShapeRules.recipe(settings, around, variant, stage, twigSpot);
                 String what = settings.shape() + " limit " + settings.maxFaces() + (settings.fastLeaves() ? " fast" : "") + " " + stage
-                        + (twigSpot ? " twig spot" : "") + " open " + open + " wood " + Surround.wood(around) + " heart " + Surround.heart(around)
-                        + (Surround.loaded(around) ? " loaded" : "") + (sheltered ? " sheltered" : "") + " variant " + variant;
+                        + (twigSpot ? " twig spot" : "") + " open " + open + " wood " + Surround.wood(around)
+                        + (Surround.woodReaches(around) ? " at the side" : "") + " heart " + Surround.heart(around)
+                        + (Surround.heartBare(around) ? " (bare)" : "") + (Surround.loaded(around) ? " loaded" : "") + (sheltered ? " sheltered" : "") + " variant " + variant;
                 check(recipe >= 0 && recipe != Recipe.NONE, "a recipe is never negative: " + what);
                 check(Recipe.stage(recipe) == stage && Recipe.open(recipe) == open && Recipe.variant(recipe) == variant, "stage, open sides and variant kept: " + what);
-                int count = Recipe.quadCount(recipe);
-                check(count <= settings.maxFaces(), "never more faces than the limit, got " + count + ": " + what);
-                boolean solid = stage == LeafStage.FULL || stage == LeafStage.THIN || stage == LeafStage.THINNER || stage == LeafStage.HALF;
-                check(Recipe.solid(recipe) == solid && Recipe.solidQuadCount(recipe) == (solid ? openCount : 0),
-                        "where leaves are not see-through: whole blocks while most leaves are there, else nothing: " + what);
+                // The limit is about the leaves, and the stick under a clump. A mini branch is counted apart.
+                int leaves = Recipe.leafQuadCount(recipe);
+                int count = Recipe.quadCount(recipe, forks);
+                check(leaves + (Recipe.stemOnly(recipe) ? Recipe.FACES_PER_STEM : 0) <= settings.maxFaces(),
+                        "never more faces of leaves than the limit, got " + leaves + ": " + what);
+                check(count == leaves + Recipe.twigFaces(recipe, forks), "all faces are those of the leaves and those of the mini branch: " + what);
+                if (Recipe.twig(recipe) != null) {
+                    check(Recipe.twig(recipe) == grow, "a mini branch grows away from the side its spot hangs on to: " + what);
+                    // Under leaves that are thinning the main twig alone is drawn: the thinner ones would be buried.
+                    int whole = stage == LeafStage.THINNER ? MiniBranch.faceCount(base, 0) : branchFaces;
+                    check(Recipe.twigFaces(recipe, forks) == (Recipe.stemOnly(recipe) ? Recipe.FACES_PER_STEM : whole),
+                            "a mini branch has five faces and five for each thinner twig, a stick four: " + what);
+                    check(Recipe.forks(recipe, forks) == (stage == LeafStage.THINNER ? 0 : forks), "thinner twigs at every stage but under thinning leaves: " + what);
+                    check(Recipe.stemOnly(recipe) || Recipe.twigBase(recipe) == base, "it starts where the wood is: " + what);
+                }
+                // Where leaves cannot be see-through.
+                boolean wholeBlock = stage == LeafStage.FULL || stage == LeafStage.THIN;
+                boolean most = stage == LeafStage.THINNER || stage == LeafStage.HALF;
+                int solid = wholeBlock ? openCount : (most && Recipe.faces(recipe) ? openCount : 0) + Recipe.clumpFaces(recipe) + Recipe.twigFaces(recipe, forks);
+                check(Recipe.solidWhole(recipe) == wholeBlock && Recipe.solidOuter(recipe) == (wholeBlock || most && Recipe.faces(recipe))
+                                && Recipe.solidQuadCount(recipe, forks) == solid,
+                        "where leaves are not see-through: a whole block in leaf, then the clump and the mini branch, never a flat picture: " + what);
                 if (open == 0) {
                     check(count == 0, "a buried block shows nothing at any stage: " + what);
                     continue;
                 }
                 if (stage.leafless()) {
-                    check(count == (twigSpot ? Recipe.FACES_PER_TWIG : 0) && Recipe.twig(recipe) == (twigSpot ? grow : null),
-                            "without leaves: the twig on a twig spot, growing away from the branch, and nothing else: " + what);
+                    if (!twigSpot) {
+                        check(count == 0, "without leaves and without a mini branch: nothing: " + what);
+                        continue;
+                    }
+                    boolean bud = stage == LeafStage.BUDS && settings.budSize() != 0;
+                    check(Recipe.twig(recipe) == grow && !Recipe.stemOnly(recipe) && !Recipe.faces(recipe)
+                                    && Recipe.planeCount(recipe) == 0 && Recipe.cards(recipe) == 0,
+                            "without leaves: the mini branch on a twig spot, growing away from the branch: " + what);
+                    check(Recipe.clump(recipe) == (bud ? settings.budSize() : 0) && Recipe.tuft(recipe) == bud && count == branchFaces + (bud ? 6 : 0),
+                            "and nothing else, but a bud on the end of the main twig before the first leaves: " + what);
                     continue;
                 }
                 if (plain) {
                     check(Recipe.faces(recipe) && count == openCount, "plain: the outer faces and nothing else, at every stage with leaves: " + what);
                     continue;
                 }
+                // Few leaves next to a leaf block that has none: nothing at all is drawn.
+                boolean inTheAir = (stage == LeafStage.LAST || stage == LeafStage.FIRST) && !twigSpot && support != null && Surround.supportBare(around);
+                check(Recipe.faces(recipe) != (Recipe.clump(recipe) != 0) || Recipe.planeCount(recipe) != 0 || inTheAir,
+                        "outer faces or a clump, never both; neither only where planes stand in: " + what);
                 switch (stage) {
                     case FULL:
+                        check(twigSpot == (twig == 1) && recipe == full, "in full leaf a mini branch is hidden and not drawn: " + what);
                         break;
                     case THIN:
-                    case THINNER:
-                        check((recipe & ~(7 << 26)) == full, "thinning: the pieces of full leaf, with other pictures: " + what);
+                        check(recipe == Recipe.withStage(full, stage), "thinning: the pieces of full leaf, with another picture: " + what);
                         break;
+                    case THINNER:
+                    case HALF: {
+                        boolean fall = stage == LeafStage.THINNER;
+                        int wanted = fall ? settings.fallSize() : settings.halfSize();
+                        if (sheltered) {
+                            check(Recipe.faces(recipe) && count == openCount, "inside the crown: the outer faces and nothing else: " + what);
+                        } else if (support == null) {
+                            check(Recipe.faces(recipe) && Recipe.clump(recipe) == 0 && Recipe.twig(recipe) == null && (fall || Recipe.cards(recipe) == 0),
+                                    "with nothing to hang on to: a whole block: " + what);
+                        } else {
+                            // A clump against the side the block hangs on to; a spot that is a clump in full leaf keeps that one.
+                            int expected = Recipe.clump(full) != 0 ? Recipe.withStage(full, stage)
+                                    : Recipe.withClump(Recipe.withStage(Recipe.start(open, variant), stage), wanted, support);
+                            if (fall && twigSpot && Recipe.twig(expected) == null) {
+                                // In autumn the mini branch shows through the thinned leaves.
+                                expected = Recipe.withTwig(expected, grow, base);
+                            }
+                            check(recipe == expected, (fall ? "most leaves gone" : "half grown") + ": a clump on the side the block hangs on to: " + what);
+                            check(Recipe.clump(recipe) != 0 && !Recipe.faces(recipe) && Recipe.planeCount(recipe) == 0 && Recipe.cards(recipe) == 0,
+                                    "a clump and no flat pieces: " + what);
+                        }
+                        break;
+                    }
                     case LAST:
-                    case FIRST:
+                    case FIRST: {
+                        int wanted = stage == LeafStage.LAST ? settings.lastSize() : settings.firstSize();
                         check(!Recipe.faces(recipe) && Recipe.cards(recipe) == 0, "few leaves: no outer faces, no cards: " + what);
                         if (twigSpot) {
-                            check(Recipe.twig(recipe) == grow && Recipe.planeCount(recipe) == 1 && Recipe.clump(recipe) == 0, "a twig and one plane: " + what);
-                            int across = grow.getAxis() == Direction.Axis.X ? Recipe.PLANE_X : grow.getAxis() == Direction.Axis.Y ? Recipe.PLANE_Y : Recipe.PLANE_Z;
-                            check(!Recipe.plane(recipe, across) && !Recipe.plane(recipe, Recipe.PLANE_Y), "the plane is upright and lies along the twig: " + what);
+                            check(Recipe.tuft(recipe) && Recipe.twig(recipe) == grow && Recipe.clump(recipe) > 0 && Recipe.clump(recipe) <= wanted
+                                            && Recipe.planeCount(recipe) == 0 && count == branchFaces + 6,
+                                    "a mini branch with a small clump on the end of its main twig: " + what);
+                        } else if (support != null && Surround.supportBare(around)) {
+                            check(count == 0 && Recipe.clump(recipe) == 0 && Recipe.twig(recipe) == null,
+                                    "nothing to sit against but a leaf block without leaves: nothing is drawn: " + what);
+                        } else if (support != null) {
+                            check(Recipe.clump(recipe) > 0 && Recipe.clump(recipe) <= wanted && Recipe.anchor(recipe) == support
+                                            && Recipe.twig(recipe) == null && Recipe.planeCount(recipe) == 0 && count == Recipe.clumpFaces(recipe),
+                                    "a small clump on the side the block hangs on to: " + what);
                         } else if (sheltered) {
                             check(count == 2 && (Recipe.plane(recipe, Recipe.PLANE_X) || Recipe.plane(recipe, Recipe.PLANE_Z)),
-                                    "inside the crown: one upright plane and nothing else: " + what);
-                        } else if (stage == LeafStage.FIRST && support != null) {
-                            check(Recipe.clump(recipe) > 0 && Recipe.clump(recipe) <= settings.firstSize() && Recipe.anchor(recipe) == support
-                                    && Recipe.twig(recipe) == null && Recipe.planeCount(recipe) == 0, "first leaves: a small clump on the side the block hangs on to: " + what);
+                                    "inside the crown with nothing to hang on to: one upright plane and nothing else: " + what);
                         } else {
                             check(Recipe.plane(recipe, Recipe.PLANE_X) && Recipe.plane(recipe, Recipe.PLANE_Z) && count == 4, "two upright planes: " + what);
                         }
                         break;
-                    case HALF:
-                        if (sheltered) {
-                            check(count == 4 && Recipe.plane(recipe, Recipe.PLANE_X) && Recipe.plane(recipe, Recipe.PLANE_Z),
-                                    "half grown inside the crown: two upright planes and nothing else: " + what);
-                        } else if (support != null) {
-                            check(Recipe.clump(recipe) >= Recipe.clump(ShapeRules.recipe(settings, around, variant, LeafStage.FIRST, false))
-                                    && Recipe.clump(recipe) <= settings.halfSize() && Recipe.anchor(recipe) == support && Recipe.twig(recipe) == null
-                                    && count == Recipe.clumpFaces(recipe), "half grown: a larger clump on the side the block hangs on to: " + what);
-                        } else {
-                            check(Recipe.faces(recipe) && Recipe.clump(recipe) == 0 && Recipe.cards(recipe) == 0, "half grown with nothing to hang on to: a whole block: " + what);
-                        }
-                        break;
+                    }
                     default:
                         break;
                 }
-                // A clump of spring is never larger than the clump the spot is in full leaf.
-                if ((stage == LeafStage.FIRST || stage == LeafStage.HALF) && Recipe.clump(recipe) != 0 && Recipe.clump(full) != 0) {
-                    check(Recipe.clump(recipe) <= Recipe.clump(full), "a spot does not shrink when its leaves are grown: " + what);
+                // A clump of autumn or spring is never larger than the clump the spot is in full leaf.
+                if (Recipe.clump(recipe) != 0 && Recipe.clump(full) != 0) {
+                    check(Recipe.clump(recipe) <= Recipe.clump(full), "a spot does not shrink when its leaves are grown, nor grow while it loses them: " + what);
+                }
+                // And a spot never grows while it loses leaves, nor shrinks while it gets them.
+                if (stage == LeafStage.LAST || stage == LeafStage.FIRST) {
+                    int larger = Recipe.clump(ShapeRules.recipe(settings, around, variant, stage == LeafStage.LAST ? LeafStage.THINNER : LeafStage.HALF, twigSpot));
+                    check(larger == 0 || Recipe.clump(recipe) <= larger, "the clump of few leaves is not larger than the one of most leaves: " + what);
                 }
             }
         }
@@ -643,11 +736,27 @@ public final class LeafCalendarGameTests {
                 "in summer leaf blocks and stone cover their sides; up, north and south are open");
         check(look.recipe(plain, summer, level, level, leaf, state) == Recipe.NONE, "plain and in full leaf: drawn by the model the block had before");
 
+        // The oak block hangs on to the deeper oak block to its east. Whether that one has leaves is passed on.
+        BlockPos.MutableBlockPos holder = new BlockPos.MutableBlockPos();
+        int nextToLeaves = Surround.read(level, leaf, state, holder, (other, a, b, c) -> Surround.LEAVES);
+        int nextToNothing = Surround.read(level, leaf, state, holder, (other, a, b, c) -> Surround.NOTHING);
+        check(Surround.heart(nextToLeaves) == Direction.EAST && Surround.isOpen(nextToLeaves, Direction.EAST)
+                        && !Surround.heartBare(nextToLeaves) && !Surround.supportBare(nextToLeaves),
+                "a thinned neighbor toward the heart no longer covers, but still has leaves to sit against");
+        check(Surround.heart(nextToNothing) == Direction.EAST && Surround.heartBare(nextToNothing) && Surround.supportBare(nextToNothing),
+                "a neighbor toward the heart without leaves is told apart");
+        check(!Surround.heartBare(Surround.read(level, leaf, state)) && !Surround.isOpen(Surround.read(level, leaf, state), Direction.EAST),
+                "in full leaf the neighbor toward the heart covers and has its leaves");
+        int lastNextToLeaves = ShapeRules.recipe(mixed, nextToLeaves, 0, LeafStage.LAST, false);
+        int lastNextToNothing = ShapeRules.recipe(mixed, nextToNothing, 0, LeafStage.LAST, false);
+        check(Recipe.clump(lastNextToLeaves) > 0 && Recipe.anchor(lastNextToLeaves) == Direction.EAST && Recipe.quadCount(lastNextToNothing, mixed.forks()) == 0,
+                "the last leaves sit against a neighbor that still has leaves, and are gone where it has none");
+
         // Winter: the oak neighbor is bare and covers nothing; the spruce still does.
         int inWinter = look.recipe(mixed, winter, level, level, leaf, state);
         check(Recipe.stage(inWinter) == LeafStage.BARE && look.stage(winter, level, state, x, y, z) == LeafStage.BARE, "in winter the oak leaf block is bare");
         check(Recipe.open(inWinter) == (Recipe.open(inSummer) | 1 << Direction.EAST.ordinal()), "the bare oak neighbor no longer covers the east side");
-        check(Recipe.quadCount(inWinter) == 0, "a bare block away from any branch shows nothing");
+        check(Recipe.quadCount(inWinter, mixed.forks()) == 0, "a bare block away from any branch shows nothing");
         BlockState spruceState = level.getBlockState(leaf.west());
         check(look.stage(winter, level, spruceState, x - 1, y, z) == LeafStage.FULL, "spruce keeps its leaves");
         int spruceInWinter = look.recipe(mixed, winter, level, level, leaf.west(), spruceState);
@@ -665,13 +774,29 @@ public final class LeafCalendarGameTests {
 
         // A branch next to it makes it a twig spot.
         Block branch = BuiltInRegistries.BLOCK.get(ResourceLocation.parse("dynamictrees:oak_branch"));
-        if (branch != Blocks.AIR) {
-            level.setBlock(leaf.north(), branch.defaultBlockState(), 2 | 16);
+        if (branch instanceof BranchBlock wood) {
+            // The thinnest branch: Dynamic Trees joins it to its leaves with a stub, so the wood comes to the block's side.
+            level.setBlock(leaf.north(), wood.getStateForRadius(1), 2 | 16);
+            int thin = Surround.read(level, leaf, state);
+            check(Surround.wood(thin) == Direction.NORTH && Surround.woodReaches(thin), "the thinnest branch reaches the side of its leaf block with a stub");
             int withTwig = look.recipe(mixed, winter, level, level, leaf, state);
-            check(Recipe.twig(withTwig) == Direction.SOUTH && Recipe.quadCount(withTwig) == Recipe.FACES_PER_TWIG,
-                    "next to a branch the bare block shows a twig that grows away from it");
-            check(Recipe.quadCount(look.recipe(mixed.withWinterTwigs(WinterTwigs.NONE), winter, level, level, leaf, state)) == 0, "unless twigs are switched off");
+            check(Recipe.twig(withTwig) == Direction.SOUTH && Recipe.twigBase(withTwig) == MiniBranch.FLUSH
+                            && Recipe.quadCount(withTwig, mixed.forks()) == MiniBranch.faceCount(MiniBranch.FLUSH, mixed.forks()),
+                    "next to a thin branch the bare block shows a mini branch that starts at the block's side and grows away from the branch");
+            check(Recipe.quadCount(withTwig, mixed.forks()) == 17, "a main twig of five faces and three thinner ones of four each");
+            check(Recipe.quadCount(look.recipe(mixed.withWinterTwigs(WinterTwigs.NONE), winter, level, level, leaf, state), mixed.forks()) == 0,
+                    "unless twigs are switched off");
             check(Recipe.twig(look.recipe(plain, winter, level, level, leaf, state)) == Direction.SOUTH, "also in the plain look");
+            // A thicker branch has no stub: its bark lies behind the block's side, and the mini branch starts inside the wood.
+            level.setBlock(leaf.north(), wood.getStateForRadius(3), 2 | 16);
+            int thick = Surround.read(level, leaf, state);
+            check(Surround.wood(thick) == Direction.NORTH && !Surround.woodReaches(thick), "a thicker branch does not reach the side of its leaf block");
+            int reaching = look.recipe(mixed, winter, level, level, leaf, state);
+            check(Recipe.twig(reaching) == Direction.SOUTH && Recipe.twigBase(reaching) == MiniBranch.REACH,
+                    "next to a thicker branch the mini branch starts inside the wood");
+            // One that fills its block is right at the side again.
+            level.setBlock(leaf.north(), wood.getStateForRadius(8), 2 | 16);
+            check(Surround.woodReaches(Surround.read(level, leaf, state)), "a trunk that fills its block is right at the side");
         } else {
             Foliage.LOGGER.warn("Foliage test: no block dynamictrees:oak_branch, the twig spot check is left out");
         }

@@ -69,6 +69,11 @@ neoForge {
             //   ./gradlew runClient -Pfoliage.selfTest=true
             if (project.findProperty('foliage.selfTest') == 'true') {
                 systemProperty 'foliage.dev.selfTest', 'true'
+                // Only some of the looks, for a quick set of pictures:
+                //   -Pfoliage.only=autumn-10,autumn-11,winter-1
+                if (project.findProperty('foliage.only') != null) {
+                    systemProperty 'foliage.dev.only', project.findProperty('foliage.only')
+                }
                 programArguments.addAll '--width', '1600', '--height', '900'
             }
         }

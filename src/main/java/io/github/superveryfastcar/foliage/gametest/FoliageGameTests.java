@@ -13,6 +13,7 @@ import io.github.superveryfastcar.foliage.season.SeasonSettings;
 import io.github.superveryfastcar.foliage.shape.CardPicture;
 import io.github.superveryfastcar.foliage.shape.LeafLook;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
+import io.github.superveryfastcar.foliage.shape.MiniBranch;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeRules;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
@@ -90,6 +91,9 @@ public final class FoliageGameTests {
     private static final LeafShape[] SHAPES = {LeafShape.SHELL, LeafShape.BUSHY, LeafShape.TUFTS, LeafShape.MIXED};
 
     private static final Direction[] DIRECTIONS = Direction.values();
+
+    /** How many thinner twigs a mini branch has with the mod's own settings. */
+    private static final int FORKS = ShapeSettings.DEFAULT.forks();
 
     /**
      * The faces the unmodded game draws for every leaf block. With the
@@ -175,8 +179,11 @@ public final class FoliageGameTests {
                                 if (clump != 0) {
                                     recipe = Recipe.withClump(recipe, clump, anchorSide);
                                 }
-                                if (twig >= 0) {
-                                    recipe = Recipe.withTwig(recipe, DIRECTIONS[twig]);
+                                // Where the mini branch starts goes through all three kinds as the variant does.
+                                int base = variant % 3;
+                                Direction twigSide = twig < 0 ? null : DIRECTIONS[twig];
+                                if (twigSide != null) {
+                                    recipe = Recipe.withTwig(recipe, twigSide, base);
                                 }
                                 recipe |= Recipe.FACES_BIT | Recipe.PLANE_Y;
                                 String what = "open " + open + " variant " + variant + " cards " + cards + " clump " + clump
@@ -187,23 +194,145 @@ public final class FoliageGameTests {
                                 check(Recipe.cards(recipe) == cards, "cards kept: " + what);
                                 check(Recipe.clump(recipe) == clump, "clump kept: " + what);
                                 check(Recipe.anchor(recipe) == (clump == 0 ? null : anchorSide), "anchor kept: " + what);
-                                check(Recipe.twig(recipe) == (twig < 0 ? null : DIRECTIONS[twig]), "twig kept: " + what);
+                                check(Recipe.twig(recipe) == twigSide, "twig kept: " + what);
+                                check(twigSide == null || Recipe.twigBase(recipe) == base, "the start of the mini branch kept: " + what);
+                                // A clump at the far end of the twig makes it a plain stick; one without a side sits on its end.
+                                boolean stick = twigSide != null && clump != 0 && anchorSide == twigSide;
+                                check(Recipe.stemOnly(recipe) == stick, "a stick under a clump at the far end: " + what);
+                                check(Recipe.tuft(recipe) == (twigSide != null && clump != 0 && anchorSide == null), "a clump on the twig's end: " + what);
                                 check(Recipe.faces(recipe) && Recipe.plane(recipe, Recipe.PLANE_Y)
                                         && !Recipe.plane(recipe, Recipe.PLANE_X) && !Recipe.plane(recipe, Recipe.PLANE_Z), "planes kept: " + what);
                                 // A clump has six faces, less the one against a covered side.
                                 boolean anchorCovered = anchorSide != null && (open & bit(anchorSide)) == 0;
                                 int clumpFaces = clump == 0 ? 0 : anchorCovered ? 5 : 6;
                                 check(Recipe.clumpFaces(recipe) == clumpFaces, "clump faces counted: " + what);
-                                int expected = Integer.bitCount(open) + 2 + 2 * cards + clumpFaces + (twig >= 0 ? 4 : 0);
-                                check(Recipe.quadCount(recipe) == expected, "faces counted: " + what);
-                                check(Recipe.slantedQuadCount(recipe) == 2 * cards + (twig >= 0 ? 4 : 0), "slanted faces counted: " + what);
-                                check(Recipe.solidQuadCount(recipe) == Integer.bitCount(open), "solid faces counted: " + what);
+                                int leafFaces = Integer.bitCount(open) + 2 + 2 * cards + clumpFaces;
+                                check(Recipe.leafQuadCount(recipe) == leafFaces, "faces of leaves counted: " + what);
+                                for (int forks = 0; forks <= MiniBranch.MAX_FORKS; forks++) {
+                                    // A main twig has five faces, each thinner twig four more; the thin kind has two at most.
+                                    int twigFaces = twigSide == null ? 0 : stick ? 4
+                                            : 5 + 4 * Math.min(forks, base == MiniBranch.DEEP ? MiniBranch.DEEP_FORKS : MiniBranch.MAX_FORKS);
+                                    check(Recipe.twigFaces(recipe, forks) == twigFaces, "faces of the mini branch counted: " + what + " forks " + forks);
+                                    check(Recipe.quadCount(recipe, forks) == leafFaces + twigFaces, "faces counted: " + what + " forks " + forks);
+                                    // In full leaf a block is a whole block where leaves cannot be see-through.
+                                    check(Recipe.solidQuadCount(recipe, forks) == Integer.bitCount(open), "solid faces counted: " + what);
+                                }
+                                check(Recipe.slantedQuadCount(recipe) == 2 * cards, "slanted faces counted: " + what);
                             }
                         }
                     }
                 }
             }
         }
+        helper.succeed();
+    }
+
+    /**
+     * The boxes of a mini branch: one main twig that comes out of the
+     * wood, thinner twigs that leave it at right angles in different
+     * directions, the faces that are counted are the faces that are
+     * there, and no face lies in a plane a clump of leaves could have a
+     * face in.
+     */
+    @GameTest(template = "empty", batch = "foliage_rules")
+    public static void miniBranchBoxes(GameTestHelper helper) {
+        int[] bases = {MiniBranch.FLUSH, MiniBranch.REACH, MiniBranch.DEEP};
+        Set<String> looks = new java.util.HashSet<>();
+        for (int base : bases) {
+            boolean deep = base == MiniBranch.DEEP;
+            float thick = deep ? 1.0F : 2.0F;
+            for (int variant = 0; variant < Recipe.VARIANTS; variant++) {
+                for (int wanted = 0; wanted <= MiniBranch.MAX_FORKS; wanted++) {
+                    String what = "start " + base + " variant " + variant + " wanted " + wanted;
+                    List<MiniBranch.Box> boxes = MiniBranch.boxes(base, variant, wanted);
+                    int forks = Math.min(wanted, deep ? MiniBranch.DEEP_FORKS : MiniBranch.MAX_FORKS);
+                    check(MiniBranch.forks(base, wanted) == forks && boxes.size() == 1 + forks, "a main twig and " + forks + " thinner ones: " + what);
+                    int faces = 0;
+                    for (MiniBranch.Box box : boxes) {
+                        faces += Integer.bitCount(box.faces());
+                    }
+                    check(faces == MiniBranch.faceCount(base, wanted) && faces == 5 + 4 * forks, "five faces for the main twig and four for every thinner one, got " + faces + ": " + what);
+
+                    // The main twig: a square stick up the middle, from the wood to its end.
+                    MiniBranch.Box stem = boxes.get(0);
+                    check(stem.along() == 1 && stem.strip() == 0, "the main twig is long in the direction the mini branch grows in: " + what);
+                    check(stem.x1() - stem.x0() == thick && stem.z1() - stem.z0() == thick && stem.x0() + stem.x1() == 16.0F && stem.z0() + stem.z1() == 16.0F,
+                            "it is " + thick + " thick and stands in the middle of the block's side: " + what);
+                    float from = base == MiniBranch.REACH ? -MiniBranch.REACH_BACK : deep ? -MiniBranch.DEEP_BACK : 0.0F;
+                    check(stem.y0() == from && stem.y1() == MiniBranch.length(base, variant), "it starts where its kind starts and ends at its length: " + what);
+                    check(stem.y1() >= 8.0F && stem.y1() <= 13.0F, "it reaches past the middle of the block and stays inside it: " + what);
+                    check(!stem.has(Direction.DOWN) && stem.has(Direction.UP), "its near end is in the wood and not drawn, its far end is: " + what);
+
+                    // The thinner twigs.
+                    Set<Direction> ways = new java.util.HashSet<>();
+                    StringBuilder look = new StringBuilder().append(base);
+                    for (int i = 1; i < boxes.size(); i++) {
+                        MiniBranch.Box fork = boxes.get(i);
+                        check(fork.along() != 1 && fork.strip() == i, "a thinner twig lies across the main twig and shows a strip of bark of its own: " + what);
+                        check(fork.y1() - fork.y0() == 1.0F && fork.y0() > 0.0F && fork.y1() < stem.y1(), "it is one pixel thick and leaves the main twig below its end: " + what);
+                        boolean alongX = fork.along() == 0;
+                        float length = alongX ? fork.x1() - fork.x0() : fork.z1() - fork.z0();
+                        float width = alongX ? fork.z1() - fork.z0() : fork.x1() - fork.x0();
+                        check(width == 1.0F && length >= 3.0F && length <= 6.0F, "it is one pixel wide and three to six long: " + what);
+                        // It touches a side of the main twig, and the face there is the one that is not drawn.
+                        Direction toward;
+                        if (alongX) {
+                            toward = fork.x0() == stem.x1() ? Direction.WEST : fork.x1() == stem.x0() ? Direction.EAST : null;
+                            check(fork.z0() >= stem.z0() && fork.z1() <= stem.z1(), "it sits on the side of the main twig: " + what);
+                        } else {
+                            toward = fork.z0() == stem.z1() ? Direction.NORTH : fork.z1() == stem.z0() ? Direction.SOUTH : null;
+                            check(fork.x0() >= stem.x0() && fork.x1() <= stem.x1(), "it sits on the side of the main twig: " + what);
+                        }
+                        check(toward != null && !fork.has(toward) && !fork.has(toward.getOpposite()) && Integer.bitCount(fork.faces()) == MiniBranch.FORK_FACES,
+                                "it starts on the main twig, and only its four long sides are drawn: " + what);
+                        check(ways.add(toward), "no two thinner twigs of a mini branch point the same way: " + what);
+                        check(fork.x0() >= 0.0F && fork.x1() <= 16.0F && fork.z0() >= 0.0F && fork.z1() <= 16.0F, "it stays inside the block: " + what);
+                        look.append(' ').append(toward).append(fork.y0()).append('+').append(length);
+                    }
+                    if (wanted == MiniBranch.MAX_FORKS) {
+                        looks.add(look.append(' ').append(stem.y1()).toString());
+                    }
+
+                    // No face in a plane that a clump of leaves can have a face in. Clumps sit in the
+                    // middle across the mini branch, 3 to 14 pixels wide, with faces on whole and half
+                    // pixels; along it their faces lie on whole pixels.
+                    for (MiniBranch.Box box : boxes) {
+                        float[][] planes = {{box.x0(), box.x1()}, {box.y0(), box.y1()}, {box.z0(), box.z1()}};
+                        Direction[][] sides = {{Direction.WEST, Direction.EAST}, {Direction.DOWN, Direction.UP}, {Direction.NORTH, Direction.SOUTH}};
+                        for (int axis = 0; axis < 3; axis++) {
+                            for (int end = 0; end < 2; end++) {
+                                if (!box.has(sides[axis][end])) {
+                                    continue;
+                                }
+                                float at = planes[axis][end];
+                                boolean onHalf = at * 2.0F == Math.round(at * 2.0F);
+                                if (axis == 1) {
+                                    check(at != Math.round(at), "no face across the mini branch on a whole pixel, got " + at + ": " + what);
+                                } else {
+                                    check(!onHalf || Math.abs(at - 8.0F) < ShapeSettings.MIN_BUD / 2.0F,
+                                            "no face along the mini branch where the side of a clump could be, got " + at + ": " + what);
+                                }
+                            }
+                        }
+                    }
+                }
+                // The clump on the end of the main twig holds that end and stays inside the block.
+                for (int size = ShapeSettings.MIN_BUD; size <= ShapeSettings.MAX_CLUMP; size++) {
+                    int end = MiniBranch.tuftEnd(base, variant, size);
+                    float length = MiniBranch.length(base, variant);
+                    check(end <= 16 && end - size >= 0, "a clump of " + size + " on the main twig stays inside the block: start " + base + " variant " + variant);
+                    check(end > length && end - size < length, "and holds the end of the main twig: start " + base + " variant " + variant + " size " + size);
+                }
+            }
+            // The stick that carries a clump at the far end of the block: four sides and no ends.
+            MiniBranch.Box stick = MiniBranch.stem(base == MiniBranch.DEEP ? MiniBranch.FLUSH : base, 7.0F);
+            check(Integer.bitCount(stick.faces()) == MiniBranch.BARE_STEM_FACES && !stick.has(Direction.DOWN) && !stick.has(Direction.UP)
+                    && stick.y1() == 7.0F && stick.y0() == (base == MiniBranch.REACH ? -MiniBranch.REACH_BACK : 0.0F), "a stick has four sides and no ends");
+        }
+        // Sixteen variants give sixteen different mini branches of each kind.
+        check(looks.size() == bases.length * Recipe.VARIANTS, "every variant gives another mini branch, got " + looks.size() + " different ones");
+        check(MiniBranch.STEM_FACES == 5 && MiniBranch.FORK_FACES == 4 && MiniBranch.faceCount(MiniBranch.FLUSH, 3) == 17,
+                "a whole mini branch is drawn from seventeen faces");
         helper.succeed();
     }
 
@@ -256,7 +385,7 @@ public final class FoliageGameTests {
             for (int fast = 0; fast < 2; fast++) {
                 for (int variant = 0; variant < Recipe.VARIANTS; variant++) {
                     int recipe = ShapeRules.recipe(rich(shape).withFastLeaves(fast == 1), surround(0), variant);
-                    check(Recipe.quadCount(recipe) == 0 && Recipe.solidQuadCount(recipe) == 0,
+                    check(Recipe.quadCount(recipe, FORKS) == 0 && Recipe.solidQuadCount(recipe, FORKS) == 0,
                             shape + " draws nothing for a buried leaf block (fast " + fast + ", variant " + variant + ")");
                 }
             }
@@ -284,14 +413,14 @@ public final class FoliageGameTests {
                                         int recipe = ShapeRules.recipe(settings, around, variant);
                                         String what = shape + " fast " + fast + " limit " + limit + " open " + open + " wood " + wood
                                                 + " heart " + heart + " loaded " + loaded + " variant " + variant;
-                                        check(Recipe.quadCount(recipe) <= limit, Recipe.quadCount(recipe) + " faces, over the limit: " + what);
+                                        check(Recipe.quadCount(recipe, FORKS) <= limit, Recipe.quadCount(recipe, FORKS) + " faces, over the limit: " + what);
                                         check(Recipe.open(recipe) == open && Recipe.variant(recipe) == variant, "open sides and variant kept: " + what);
                                         // What is drawn fills the block's open sides: outer faces, or a clump instead.
                                         if (open != 0) {
                                             check(Recipe.faces(recipe) != (Recipe.clump(recipe) != 0), "outer faces or a clump, never both or neither: " + what);
                                         }
                                         if (Recipe.twig(recipe) != null) {
-                                            check(Recipe.clump(recipe) != 0, "a twig only under a clump: " + what);
+                                            check(Recipe.stemOnly(recipe), "in full leaf a twig only as the stick under a clump: " + what);
                                         }
                                     }
                                 }
@@ -327,7 +456,7 @@ public final class FoliageGameTests {
                 int six = ShapeRules.recipe(settings(LeafShape.SHELL), surround(open), variant);
                 check(Recipe.faces(six) && Recipe.cards(six) == 0 && Recipe.clump(six) == 0, "outer faces, no cards, no clump at the limit of 6: " + what);
                 check(Recipe.planeCount(six) == Math.min(wanted, (6 - count) / 2), "as many planes as fit under 6: " + what);
-                check(Recipe.quadCount(all) >= Recipe.quadCount(six), "the limit never adds faces: " + what);
+                check(Recipe.quadCount(all, FORKS) >= Recipe.quadCount(six, FORKS), "the limit never adds faces: " + what);
                 for (int plane : new int[] {Recipe.PLANE_X, Recipe.PLANE_Y, Recipe.PLANE_Z}) {
                     check(!Recipe.plane(six, plane) || Recipe.plane(all, plane), "only planes that are wanted: " + what);
                 }
@@ -404,7 +533,7 @@ public final class FoliageGameTests {
                     check(Recipe.clump(recipe) == rich.tipSize(), "an outermost tip is a clump of the tip size: " + what);
                     check(Recipe.twig(recipe) == wood.getOpposite(), "on a twig that grows away from the wood: " + what);
                     check(Recipe.anchor(recipe) == wood.getOpposite(), "the clump sits at the far end of its twig: " + what);
-                    check(Recipe.quadCount(recipe) <= rich.maxFaces(), "clump and twig stay under the limit: " + what);
+                    check(Recipe.stemOnly(recipe) && Recipe.quadCount(recipe, FORKS) <= rich.maxFaces(), "clump and stick stay under the limit: " + what);
                     check(!Recipe.faces(recipe) && Recipe.planeCount(recipe) == 0 && Recipe.cards(recipe) == 0, "and nothing else: " + what);
                     check(Recipe.clump(limited) == six.tipSize() && Recipe.anchor(limited) == wood && Recipe.twig(limited) == null,
                             "at the limit of 6 the same clump without the twig, against the wood: " + what);
@@ -447,7 +576,7 @@ public final class FoliageGameTests {
                     check(Recipe.clump(limited) == six.clumpSize() && Recipe.anchor(limited) == Direction.EAST && Recipe.twig(limited) == null,
                             "at the limit of 6 the same clump without the twig, against the heart of the crown: " + what);
                     // The clump's face against a covered side is not drawn.
-                    check(Recipe.quadCount(limited) == ((open & bit(Direction.EAST)) == 0 ? 5 : 6), "five faces against a covered side, else six: " + what);
+                    check(Recipe.quadCount(limited, FORKS) == ((open & bit(Direction.EAST)) == 0 ? 5 : 6), "five faces against a covered side, else six: " + what);
                 } else {
                     check(recipe == ShapeRules.recipe(rich(LeafShape.BUSHY), around, variant), "everything else is drawn as bushy: " + what);
                     check(limited == ShapeRules.recipe(settings(LeafShape.BUSHY), around, variant), "also at the limit of 6: " + what);
@@ -469,10 +598,10 @@ public final class FoliageGameTests {
                     int around = Surround.of(open, Direction.DOWN, null, false);
                     String what = shape + " with fewest faces, open " + open + ", variant " + variant;
                     int recipe = ShapeRules.recipe(rich(shape).withFastLeaves(true), around, variant);
-                    check(Recipe.quadCount(recipe) == count + 2 && Recipe.planeCount(recipe) == 1, "outer faces and one plane: " + what);
+                    check(Recipe.quadCount(recipe, FORKS) == count + 2 && Recipe.planeCount(recipe) == 1, "outer faces and one plane: " + what);
                     check(Recipe.slantedQuadCount(recipe) == 0 && Recipe.clump(recipe) == 0, "no slanted faces, no clump: " + what);
                     int limited = ShapeRules.recipe(settings(shape).withFastLeaves(true), around, variant);
-                    check(Recipe.quadCount(limited) == (count <= 4 ? count + 2 : count), "at the limit of 6, the plane only where it fits: " + what);
+                    check(Recipe.quadCount(limited, FORKS) == (count <= 4 ? count + 2 : count), "at the limit of 6, the plane only where it fits: " + what);
                 }
             }
         }
@@ -482,7 +611,7 @@ public final class FoliageGameTests {
     /** Numbers outside their range are pulled back into it. */
     @GameTest(template = "empty", batch = "foliage_rules")
     public static void settingsStayInRange(GameTestHelper helper) {
-        ShapeSettings wild = new ShapeSettings(null, false, 99, 9, 2, 500, -3, 0, 99, 1, null, 99, 99, 1);
+        ShapeSettings wild = new ShapeSettings(null, false, 99, 9, 2, 500, -3, 0, 99, 1, null, 99, 99, 1, 99, 1, 2, 99);
         check(wild.shape() == LeafShape.MIXED, "a missing shape becomes the mod's own");
         check(wild.maxFaces() == ShapeSettings.MAX_FACES, "the limit on faces at most " + ShapeSettings.MAX_FACES);
         check(wild.withMaxFaces(1).maxFaces() == ShapeSettings.MIN_FACES, "and at least " + ShapeSettings.MIN_FACES);
@@ -495,6 +624,12 @@ public final class FoliageGameTests {
         check(wild.twigDepth() == ShapeSettings.MAX_DEPTH, "the twig depth at most " + ShapeSettings.MAX_DEPTH);
         check(wild.firstSize() == ShapeSettings.MAX_CLUMP && wild.halfSize() == ShapeSettings.MAX_CLUMP,
                 "the clumps of spring in range, the half-grown one not smaller than the first: " + wild.firstSize() + ", " + wild.halfSize());
+        check(wild.twigForks() == MiniBranch.MAX_FORKS && wild.withTwigForks(-4).twigForks() == 0, "the thinner twigs of a mini branch: 0 to " + MiniBranch.MAX_FORKS);
+        check(wild.forks() == wild.twigForks() && wild.withFastLeaves(true).forks() == 0, "with the fewest faces a mini branch has no thinner twigs");
+        check(wild.budSize() == ShapeSettings.MIN_BUD && wild.withBudSize(0).budSize() == 0 && wild.withBudSize(99).budSize() == ShapeSettings.MAX_BUD,
+                "a bud is never as thin as its twig, and 0 means none: " + wild.budSize());
+        check(wild.lastSize() == ShapeSettings.MAX_CLUMP && wild.fallSize() == ShapeSettings.MAX_CLUMP,
+                "the clumps of autumn in range, the first not smaller than the last: " + wild.fallSize() + ", " + wild.lastSize());
         // Every clump size in range fits into a recipe.
         for (int size = ShapeSettings.MIN_CLUMP; size <= ShapeSettings.MAX_CLUMP; size++) {
             check(Recipe.clump(Recipe.withClump(Recipe.start(63, 0), size, Direction.DOWN)) == size, "clump size " + size + " fits into a recipe");
@@ -502,7 +637,8 @@ public final class FoliageGameTests {
         ShapeSettings standard = ShapeSettings.DEFAULT;
         check(standard.equals(new ShapeSettings(standard.shape(), standard.fastLeaves(), standard.maxFaces(), standard.tipSides(),
                 standard.clumpSides(), standard.cardWidth(), standard.cardHeight(), standard.tuftSize(), standard.tipSize(), standard.clumpSize(),
-                standard.winterTwigs(), standard.twigDepth(), standard.firstSize(), standard.halfSize())),
+                standard.winterTwigs(), standard.twigDepth(), standard.firstSize(), standard.halfSize(),
+                standard.twigForks(), standard.budSize(), standard.fallSize(), standard.lastSize())),
                 "the mod's own numbers are all in range");
         check(standard.maxFaces() == 6, "the mod's own limit is the 6 faces of the unmodded game");
         check(standard.withShape(LeafShape.SHELL).shape() == LeafShape.SHELL && standard.withFastLeaves(true).fastLeaves()
@@ -691,7 +827,7 @@ public final class FoliageGameTests {
                         && Surround.grow(alone) == Direction.UP,
                 "with no wood and no leaves around it hangs on to nothing, and a twig would grow up");
         int aloneRecipe = ShapeRules.recipe(settings(LeafShape.MIXED), alone, 0);
-        check(Recipe.clump(aloneRecipe) == 0 && Recipe.quadCount(aloneRecipe) == 6, "mixed draws it as a whole block with six faces");
+        check(Recipe.clump(aloneRecipe) == 0 && Recipe.quadCount(aloneRecipe, FORKS) == 6, "mixed draws it as a whole block with six faces");
 
         // On top of a better supplied leaf block it is an outermost tip: a clump that sits on that block.
         level.setBlock(leaf.below(), oakLeaves.defaultBlockState().setValue(LeavesBlock.DISTANCE, 4), 2 | 16);
@@ -704,7 +840,7 @@ public final class FoliageGameTests {
         int tipRecipe = ShapeRules.recipe(settings(LeafShape.MIXED), tip, 0);
         check(Recipe.clump(tipRecipe) == ShapeSettings.DEFAULT.clumpSize() && Recipe.anchor(tipRecipe) == Direction.DOWN,
                 "mixed draws it as a clump sitting on the block below");
-        check(Recipe.quadCount(tipRecipe) == 5, "from five faces: the one against the block below is left out");
+        check(Recipe.quadCount(tipRecipe, FORKS) == 5, "from five faces: the one against the block below is left out");
 
         level.setBlock(leaf.above(), Blocks.SNOW.defaultBlockState(), 2 | 16);
         int snowed = Surround.read(level, leaf, state);
@@ -949,6 +1085,7 @@ public final class FoliageGameTests {
                 double summerFaces = 0;
                 double winterFaces = 0;
                 double mostFaces = 0;
+                double mostLeafFaces = 0;
                 long mostAt = 0;
                 int twigs = 0;
                 // A kind that keeps its leaves is the same at every step; a few steps show it.
@@ -956,6 +1093,7 @@ public final class FoliageGameTests {
                     LeafClock clock = LeafClock.of(rules, year, step);
                     String when = species + ", " + shape.shape() + ", step " + step;
                     long faces = 0;
+                    long leafFaces = 0;
                     int bare = 0;
                     int twigsNow = 0;
                     for (int i = 0; i < count; i++) {
@@ -968,12 +1106,15 @@ public final class FoliageGameTests {
                         if (recipe == Recipe.NONE) {
                             check(plain && stage == LeafStage.FULL, "only a plain block in full leaf is left to the model it had before: " + when);
                             faces += PLAIN_FACES;
+                            leafFaces += PLAIN_FACES;
                             continue;
                         }
                         check(Recipe.stage(recipe) == stage, "the recipe carries the stage of the block, at " + leaf + ": " + when);
-                        int quads = Recipe.quadCount(recipe);
-                        check(quads <= shape.maxFaces(), "never more faces than the limit, got " + quads + " at " + leaf + ": " + when);
-                        faces += quads;
+                        // The limit is about the leaves, and the stick under a clump in full leaf. A mini branch is counted apart.
+                        int quads = Recipe.leafQuadCount(recipe) + (Recipe.stemOnly(recipe) ? Recipe.FACES_PER_STEM : 0);
+                        check(quads <= shape.maxFaces(), "never more faces of leaves than the limit, got " + quads + " at " + leaf + ": " + when);
+                        leafFaces += quads;
+                        faces += Recipe.quadCount(recipe, shape.forks());
                         bare += stage == LeafStage.BARE ? 1 : 0;
                         twigsNow += Recipe.twig(recipe) != null && stage == LeafStage.BARE ? 1 : 0;
                         if (plain || !sheds) {
@@ -1003,11 +1144,12 @@ public final class FoliageGameTests {
                         mostFaces = perBlock;
                         mostAt = step;
                     }
+                    mostLeafFaces = Math.max(mostLeafFaces, leafFaces / (double) count);
                 }
-                check(mostFaces <= Math.max(PLAIN_FACES, shape.maxFaces()), "the year's most faces per leaf block stay within the limit");
-                report.append(String.format(Locale.ROOT, "; %s%s summer %.2f, winter %.2f (%d twigs), most %.2f on day %d",
+                check(mostLeafFaces <= Math.max(PLAIN_FACES, shape.maxFaces()), "the year's most faces of leaves per leaf block stay within the limit");
+                report.append(String.format(Locale.ROOT, "; %s%s summer %.2f, winter %.2f (%d mini branches), most %.2f on day %d (leaves alone at most %.2f)",
                         shape.shape().name().toLowerCase(Locale.ROOT), shape.maxFaces() > PLAIN_FACES ? " without limit, more twigs" : "",
-                        summerFaces, winterFaces, twigs, mostFaces, mostAt / rules.stepsPerDay() + 1));
+                        summerFaces, winterFaces, twigs, mostFaces, mostAt / rules.stepsPerDay() + 1, mostLeafFaces));
             }
             Foliage.LOGGER.info("Foliage test: {} through the year, {} leaf blocks, faces per leaf block{}", species, count, report);
         }
@@ -1027,10 +1169,10 @@ public final class FoliageGameTests {
                 int variant = ShapeRules.variant(leaf.getX(), leaf.getY(), leaf.getZ());
                 int count;
                 if (settings == null) {
-                    count = Recipe.solidQuadCount(ShapeRules.recipe(ShapeSettings.DEFAULT, around, variant));
+                    count = Recipe.solidQuadCount(ShapeRules.recipe(ShapeSettings.DEFAULT, around, variant), FORKS);
                 } else {
                     int recipe = ShapeRules.recipe(settings, around, variant);
-                    count = Recipe.quadCount(recipe);
+                    count = Recipe.quadCount(recipe, settings.forks());
                     slanted += Recipe.slantedQuadCount(recipe);
                 }
                 faces += count;

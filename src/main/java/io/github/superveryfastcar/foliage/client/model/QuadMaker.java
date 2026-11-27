@@ -1,5 +1,6 @@
 package io.github.superveryfastcar.foliage.client.model;
 
+import io.github.superveryfastcar.foliage.shape.MiniBranch;
 import javax.annotation.Nullable;
 import net.minecraft.client.renderer.block.model.BakedQuad;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
@@ -9,7 +10,7 @@ import org.joml.Vector3f;
 
 /**
  * Makes the faces of the pieces a leaf block is drawn from: outer faces,
- * inner planes, cards, clumps and twigs (see
+ * inner planes, cards, clumps and the boxes of mini branches (see
  * {@link io.github.superveryfastcar.foliage.shape.Recipe}).
  *
  * <p>All measures are in pixels of a block, 0 to 16 from one side to the
@@ -27,8 +28,14 @@ final class QuadMaker {
     private static final float[] PICTURE_U = {0, 16, 16, 0};
     private static final float[] PICTURE_V = {16, 16, 0, 0};
 
-    /** How far a twig's planes stay from the corners of the block. */
-    private static final float TWIG_INSET = 0.8F;
+    /** The six directions, and for each the axis it lies along (0 = x, 1 = y, 2 = z). */
+    private static final Direction[] DIRECTIONS = Direction.values();
+
+    /** Where on the bark picture the main twig is shown: the same two columns Dynamic Trees shows on its thinnest branch. */
+    private static final int BARK_MIDDLE = 7;
+
+    /** How far apart, across and down the bark picture, the strips of the thinner twigs lie. */
+    private static final int BARK_STEP = 4;
 
     private QuadMaker() {
     }
@@ -158,6 +165,47 @@ final class QuadMaker {
                 hi[axis] = size;
             }
         }
+        return cube(sprite, lo, hi, tint);
+    }
+
+    /**
+     * A tuft: a small cube of leaves on a mini branch. It sits in the
+     * middle of the block across the direction the mini branch grows in,
+     * and along that direction wherever the caller says: around the end of
+     * the main twig.
+     *
+     * @param sprite the leaf texture
+     * @param size   the side of the cube in pixels
+     * @param grow   the direction the mini branch grows in
+     * @param end    how far the cube's far face lies from the side of the
+     *               block the mini branch grows from, in pixels
+     *               ({@link MiniBranch#tuftEnd})
+     * @param tint   the tint number of the leaf block's own faces
+     * @return six faces, in the order of {@link Direction#ordinal()}
+     */
+    static BakedQuad[] tuft(TextureAtlasSprite sprite, int size, Direction grow, int end, int tint) {
+        float[] lo = {8.0F - size / 2.0F, 8.0F - size / 2.0F, 8.0F - size / 2.0F};
+        float[] hi = {8.0F + size / 2.0F, 8.0F + size / 2.0F, 8.0F + size / 2.0F};
+        int axis = grow.getAxis().ordinal();
+        if (grow.getAxisDirection() == Direction.AxisDirection.POSITIVE) {
+            lo[axis] = end - size;
+            hi[axis] = end;
+        } else {
+            lo[axis] = 16.0F - end;
+            hi[axis] = 16.0F - end + size;
+        }
+        return cube(sprite, lo, hi, tint);
+    }
+
+    /**
+     * A cube of leaves inside the block. Each of its faces shows the part
+     * of the leaf texture that lies there.
+     *
+     * @param lo where the cube starts along x, y and z, in pixels
+     * @param hi where it ends
+     * @return six faces, in the order of {@link Direction#ordinal()}
+     */
+    private static BakedQuad[] cube(TextureAtlasSprite sprite, float[] lo, float[] hi, int tint) {
         float x0 = lo[0];
         float x1 = hi[0];
         float y0 = lo[1];
@@ -186,28 +234,97 @@ final class QuadMaker {
     }
 
     /**
-     * A twig: two crossed planes from corner to corner of the block, each
-     * with a bare twig picture that grows from the middle of its bottom
-     * edge, seen from both sides. The whole cross is turned so that the
-     * twig grows in the given direction.
+     * One box of a mini branch ({@link MiniBranch}), in the bark of the
+     * tree. The box is given in the mini branch's own frame, in which it
+     * grows upward from the bottom face of the block; here it is turned so
+     * that it grows in the given direction.
      *
-     * <p>Twig pictures have the color of bark and are not tinted with the
-     * leaf color. They take no shade from the direction they face, so a
-     * twig is evenly lit from all around.</p>
+     * <p>Bark is not tinted with the leaf color. Its faces are darkened by
+     * the direction they face and take soft shadows, as the branches of
+     * Dynamic Trees do, so that the two read as one piece of wood.</p>
      *
-     * @param first  the picture on one plane
-     * @param second the picture on the other plane
-     * @param grow   the direction the twig grows in
-     * @return four faces
+     * <h3>Which pixels of the bark</h3>
+     * The grain of a bark picture runs from top to bottom. A box shows a
+     * strip of it as wide as the box, with the grain along its long side,
+     * one pixel of picture per pixel of the block. The main twig shows the
+     * two columns in the middle of the picture, as the thinnest branch of
+     * Dynamic Trees does. The thinner twigs each show another strip, so
+     * that they do not all look the same. A twig longer than the picture
+     * (one that starts inside the wood) shows the whole picture, a little
+     * stretched.
+     *
+     * @param bark the bark picture of the tree
+     * @param box  the box
+     * @param grow the direction the mini branch grows in
+     * @return the faces of the box that are drawn ({@link MiniBranch.Box#faces})
      */
-    static BakedQuad[] twig(TextureAtlasSprite first, TextureAtlasSprite second, Direction grow) {
-        float near = TWIG_INSET;
-        float far = 16.0F - TWIG_INSET;
-        BakedQuad[] one = twoSided(first, turned(grow, near, 0, near), turned(grow, far, 0, far),
-                turned(grow, far, 16, far), turned(grow, near, 16, near), 0, 16, 16, 0, -1, false, false);
-        BakedQuad[] other = twoSided(second, turned(grow, near, 0, far), turned(grow, far, 0, near),
-                turned(grow, far, 16, near), turned(grow, near, 16, far), 0, 16, 16, 0, -1, false, false);
-        return new BakedQuad[] {one[0], one[1], other[0], other[1]};
+    static BakedQuad[] box(TextureAtlasSprite bark, MiniBranch.Box box, Direction grow) {
+        float[] lo = {box.x0(), box.y0(), box.z0()};
+        float[] hi = {box.x1(), box.y1(), box.z1()};
+        int along = box.along();
+        float length = hi[along] - lo[along];
+        float stretch = length > 16.0F ? 16.0F / length : 1.0F;
+        // The strip: its left edge across the picture, and where it starts down the picture.
+        float left = BARK_MIDDLE + BARK_STEP * box.strip() & 15;
+        float top = box.strip() == 0 ? 0.0F : Math.min(BARK_STEP * box.strip(), 16.0F - length);
+        // The far end of a twig shows a small square of bark, as the end of a branch of Dynamic Trees does.
+        float endTop = box.strip() == 0 ? BARK_MIDDLE : top;
+        BakedQuad[] quads = new BakedQuad[Integer.bitCount(box.faces())];
+        int made = 0;
+        for (Direction side : DIRECTIONS) {
+            if (!box.has(side)) {
+                continue;
+            }
+            float[][] points = corners(side, lo, hi);
+            int across = side.getAxis().ordinal();
+            Vector3f[] corners = new Vector3f[4];
+            float[] u = new float[4];
+            float[] v = new float[4];
+            for (int i = 0; i < 4; i++) {
+                float[] point = points[i];
+                if (across != along) {
+                    // A long side: the grain runs along the box, the strip's width lies across it.
+                    int wide = 3 - across - along;
+                    u[i] = left + point[wide] - lo[wide];
+                    v[i] = top + (point[along] - lo[along]) * stretch;
+                } else {
+                    // An end.
+                    int first = (along + 1) % 3;
+                    int second = (along + 2) % 3;
+                    u[i] = left + point[first] - lo[first];
+                    v[i] = endTop + point[second] - lo[second];
+                }
+                corners[i] = turned(grow, point[0], point[1], point[2]);
+            }
+            quads[made++] = quad(bark, corners, u, v, -1, true, true);
+        }
+        return quads;
+    }
+
+    /**
+     * The four corners of one face of a box, counter-clockwise as seen
+     * from outside the box.
+     *
+     * @param side which face
+     * @param lo   where the box starts along x, y and z
+     * @param hi   where it ends
+     * @return four points, each as x, y and z
+     */
+    private static float[][] corners(Direction side, float[] lo, float[] hi) {
+        float x0 = lo[0];
+        float x1 = hi[0];
+        float y0 = lo[1];
+        float y1 = hi[1];
+        float z0 = lo[2];
+        float z1 = hi[2];
+        return switch (side) {
+            case DOWN -> new float[][] {{x0, y0, z0}, {x1, y0, z0}, {x1, y0, z1}, {x0, y0, z1}};
+            case UP -> new float[][] {{x0, y1, z1}, {x1, y1, z1}, {x1, y1, z0}, {x0, y1, z0}};
+            case NORTH -> new float[][] {{x1, y0, z0}, {x0, y0, z0}, {x0, y1, z0}, {x1, y1, z0}};
+            case SOUTH -> new float[][] {{x0, y0, z1}, {x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}};
+            case WEST -> new float[][] {{x0, y0, z0}, {x0, y0, z1}, {x0, y1, z1}, {x0, y1, z0}};
+            case EAST -> new float[][] {{x1, y0, z1}, {x1, y0, z0}, {x1, y1, z0}, {x1, y1, z1}};
+        };
     }
 
     // ------------------------------------------------------------------

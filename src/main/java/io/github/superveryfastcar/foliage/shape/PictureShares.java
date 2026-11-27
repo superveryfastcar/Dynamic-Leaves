@@ -30,11 +30,12 @@ public record PictureShares(float thin, float thinner, float last, float youngGo
     public static final float MAX_LIGHT = 2.0F;
 
     /**
-     * The values the mod ships with: a third, two thirds and 85 percent of
-     * the leaves gone in autumn; half of the leaves out and 15 percent
+     * The values the mod ships with: a third, half and 85 percent of the
+     * leaves gone in autumn (leaf spots also get smaller as their leaves
+     * fall, so the second picture can stay fuller than "two thirds gone"); half of the leaves out and 15 percent
      * lighter at first in spring, then 85 percent out and 7 percent lighter.
      */
-    public static final PictureShares DEFAULT = new PictureShares(0.33F, 0.67F, 0.85F, 0.5F, 1.15F, 0.15F, 1.07F);
+    public static final PictureShares DEFAULT = new PictureShares(0.33F, 0.5F, 0.85F, 0.5F, 1.15F, 0.15F, 1.07F);
 
     /** How the numbers are read from an atlas file. Every one of them may be left out. */
     public static final Codec<PictureShares> CODEC = RecordCodecBuilder.create(instance -> instance.group(

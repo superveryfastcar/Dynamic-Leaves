@@ -276,7 +276,7 @@ public record SeasonSettings(boolean enabled, double fallDays, double returnDays
 
     private static Map<ResourceLocation, LeafSchedule> defaultKinds() {
         Map<ResourceLocation, LeafSchedule> kinds = new LinkedHashMap<>();
-        kinds.put(ResourceLocation.fromNamespaceAndPath("dynamictrees", "birch_leaves"), new LeafSchedule(0.0, TreeOrder.INSIDE_OUT));
+        kinds.put(ResourceLocation.fromNamespaceAndPath("dynamictrees", "birch_leaves"), new LeafSchedule(0.0, TreeOrder.OUTSIDE_IN));
         kinds.put(ResourceLocation.fromNamespaceAndPath("dynamictrees", "oak_leaves"), new LeafSchedule(1.0, TreeOrder.OUTSIDE_IN));
         kinds.put(ResourceLocation.fromNamespaceAndPath("dynamictrees", "dark_oak_leaves"), new LeafSchedule(2.0, TreeOrder.OUTSIDE_IN));
         return kinds;

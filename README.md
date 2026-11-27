@@ -1,10 +1,10 @@
 # Foliage
 
-Leaves with depth for the trees of Dynamic Trees, and a year for them to live through. A crown is no longer a pile of plain leaf cubes: it is built from leaf faces on its outside, leaf planes and round leaf cards inside, and small clumps of leaves at the tips of its branches. In the last days of autumn the leaves thin out and fall, tree by tree and from the edge of each crown inward. In winter the trees stand bare, with twigs on their branches, and bare means bare: light, rain, snow and players pass through the crown. In the first days of spring the twigs bud, and small light leaves grow back from the twigs outward. All of it needs fewer faces than the plain cubes.
+Leaves with depth for the trees of Dynamic Trees, and a year for them to live through. A crown is no longer a pile of plain leaf cubes: it is built from leaf faces on its outside, leaf planes and round leaf cards inside, and small clumps of leaves at the tips of its branches. In the last days of autumn the leaves thin out and fall, tree by tree and from the edge of each crown inward. In winter the trees stand bare, with small branches in their own bark where the leaves were, and bare means bare: light, rain, snow and players pass through the crown. In the first days of spring the twigs bud, and small light leaves grow back from the twigs outward. All of it needs fewer faces than the plain cubes.
 
 Foliage is a mod for **Minecraft 1.21.1 on NeoForge** (built against NeoForge 21.1.267). It is an addon for [Dynamic Trees](https://modrinth.com/mod/dynamictrees) 1.7.2 and needs the [Calendar](https://github.com/superveryfastcar/Calendar) and Seasons mods.
 
-> **Version 0.4.0 is the last of four steps.** It gives the trees the rest of their year: single leaves drift down from the crowns while the leaves fall, a tree rests in winter and bears its fruit in season, snow that lay on a crown falls to the ground with the leaves, far crowns keep their leaves all year under Distant Horizons, and `/foliage restore` gives a whole world its leaf blocks back.
+> **Version 0.5.0** makes the bare tree and the fall look right: a bare crown is small branches in the tree's own bark, built like the branches of Dynamic Trees; a leaf block gets smaller as its leaves fall and ends as a small tuft on a twig; and a leaf block that changes while you look at it lets a few leaves go. Before it, 0.4.0 gave the trees the rest of their year: leaves in the air, trees that rest in winter and bear fruit in season, snow that falls with the leaves, far crowns under Distant Horizons, and `/foliage restore`.
 >
 > **Every player needs Foliage to join a server that has it**, because the bare blocks are blocks of the mod. Read [Taking the mod out of a world](#taking-the-mod-out-of-a-world) before you remove it.
 
@@ -27,7 +27,8 @@ Every leaf block of a Dynamic Trees tree is drawn from a few pieces, chosen by w
 | Inner planes | Flat leaf pictures through the middle of the block. They give depth behind the holes of the outer faces. |
 | Cards | Round patches of leaves that stand at a slant and reach out past the block. They break up the square outline of a crown. |
 | Clumps | A smaller cube of leaves that sits on its branch, at the tips of a crown. |
-| Twigs | A bare twig that carries a clump: it grows from the branch, and the clump sits at its far end (only with a raised face limit, see Settings). |
+| Sticks | A bare stick in the tree's own bark that carries a clump: it grows from the branch, and the clump sits at its far end (only with a raised face limit, see Settings). |
+| Small branches | What a bare crown is made of: a small branch in the tree's own bark, built like the branches of Dynamic Trees, only thinner. A main twig two pixels thick grows out of the wood into the leaf spot, and up to three twigs one pixel thick leave it in different directions. There are sixteen of them, so no two neighbors look alike. |
 
 A leaf block that is buried inside the crown is not drawn at all, and no face is drawn between two leaf blocks.
 
@@ -53,12 +54,13 @@ Oak, birch and dark oak lose their leaves at the end of autumn and grow them bac
 
 - Kinds start on different days: birch first, oak a day later, dark oak a day after oak.
 - Trees of one kind start up to a day apart, depending on where they stand. Trees close to each other go together, so a forest thins in soft patches and not tree by tree at random.
-- One tree takes about 4 days. Its crown thins from the far edge inward (birch: from the twigs outward), one leaf block after another: about a third of the leaves gone, then two thirds, then a few last leaves, then none.
+- One tree takes about 4 days. Its crown thins from the far edge inward, one leaf block after another, so the leaves draw back toward the branches. A leaf block first thins (about a third of its leaves gone). Then it gets smaller and draws back toward its branch, with about half of its leaves gone. Then it is a small tuft of last leaves on the end of a twig, and then it is gone.
+- Last leaves only hang where there is something to hang on to: on a twig, or against a neighbor that is still in leaf. Nothing is left floating in the air.
 - On the last day of autumn every tree that sheds is bare.
 
-**Winter.** A bare crown is drawn as twigs on the branches: every leaf spot next to wood carries a bare twig, the rest is air. That is 0.7 to 0.9 faces per leaf block instead of 6.
+**Winter.** A bare crown is drawn as small branches: every leaf spot next to wood carries one, in the bark of its tree, and the rest is air. That is 3 to 4 faces per leaf block instead of the 6 of the unmodded game. `winterTwigs` and `twigForks` set how many there are; with `winterTwigs = NONE` a bare crown costs next to nothing.
 
-**Spring.** The leaves come back during the first 7 days of spring, in the same order of kinds and patches. A tree first shows buds on its twigs for a day. Then small, light leaves come out at the twigs and spread outward: first a few, then half-grown ones, then the full crown. On day 7 every tree is in full leaf.
+**Spring.** The leaves come back during the first 7 days of spring, in the same order of kinds and patches. A tree first shows buds for a day: a small light green knot on the end of every main twig. Then small, light leaves come out there and spread outward: first a small tuft, then a half-grown clump, then the full crown. On day 7 every tree is in full leaf.
 
 The leaves do not change all the time but 4 times a day, and only the part of the landscape whose look really changed is drawn again, spread over some seconds.
 
@@ -85,6 +87,8 @@ Every plain kind of Dynamic Trees leaves has a bare block, also those of addons.
 ### Leaves in the air
 
 While the leaves fall, single leaves drift down out of the crowns around you: they start under a leaf block that is losing its leaves right now, in the color that tree has that day, turn as they sink, swing a little wider as they go, and lie still for a moment on the ground before they vanish. Nothing of this is sent anywhere and nothing is stored; each player's game finds its own leaves in the air around the player, so a forest costs no more than a single tree.
+
+A leaf block that loses leaves while you look its way also lets a few go at that very moment (`burst`), so that a crown does not change without a sign. The calendar moves 4 times a day; at each of those moments the leaf blocks around you are gone through, the nearest first and a few per tick, and those in front of you that just lost leaves drop some. Blocks behind you are skipped.
 
 Outside the days when leaves fall nothing is looked at at all. Within them, the game's own particle setting is followed: "decreased" halves the leaves, "minimal" switches them off. How many there are, how far they start and how many may be in the air at once are settings ([`fallingLeaves`](#the-look-configfoliage-clienttoml)), and a player who wants none switches them off.
 
@@ -159,14 +163,18 @@ Each player's own.
 | --- | --- | --- |
 | `shape` | `MIXED` | The shape of the crowns: `PLAIN`, `SHELL`, `BUSHY`, `TUFTS` or `MIXED`. |
 | `fastLeaves` | `false` | The fewest faces, whatever the shape: only the outside of the crown and one leaf plane inside each block. For slow computers. |
-| `maxFaces` | `6` | The most faces a single leaf block may be drawn from, 6 to 12. With 6 no leaf block costs more than in the unmodded game. Higher values give richer tips: a second leaf card, and clumps that sit on a twig instead of right on their branch. |
-| `winterTwigs` | `NEAR` | Which leaf spots of a bare tree carry a twig: `NONE` (bare branches only), `NEAR` (the spots next to wood) or `MORE` (also spots deep in the crown, see `twigDepth`). |
+| `maxFaces` | `6` | The most faces a single leaf block may be drawn from, 6 to 12. With 6 no leaf block costs more than in the unmodded game. Higher values give richer tips: a second leaf card, and clumps that sit on a stick instead of right on their branch. The small branches of bare trees are counted apart (see `twigForks`). |
+| `winterTwigs` | `NEAR` | Which leaf spots of a bare tree carry a small branch: `NONE` (the branches of Dynamic Trees only), `NEAR` (the spots next to wood) or `MORE` (also spots deep in the crown, see `twigDepth`). |
+| `twigForks` | `3` | How many thinner twigs leave the main twig of a small branch, 0 to 3. The main twig costs 5 faces and each thinner one 4, on every leaf spot next to wood, all winter. Lower it if bare forests cost too many frames. |
 | `tipSides` | `3` | A leaf block with at least this many of its six sides open counts as a tip of the crown. |
 | `clumpSides` | `4` | A leaf block with at least this many open sides is an outermost tip and becomes a clump (tufts, mixed). |
 | `cardWidth`, `cardHeight` | `30`, `26` | The size of a leaf card in pixels (a block is 16 wide). |
 | `tuftSize`, `tipSize` | `12`, `8` | Tufts: the size of a clump at a tip, and at an outermost tip. |
 | `clumpSize` | `10` | Mixed: the size of a clump. |
-| `twigDepth` | `3` | With `winterTwigs = MORE`: leaf spots at least this deep in the crown also carry a twig (1 is the far edge, most trees go up to 4). |
+| `twigDepth` | `3` | With `winterTwigs = MORE`: leaf spots at least this deep in the crown also carry a small branch, a thinner one that grows out of the leaf spot they hang on to (1 is the far edge, most trees go up to 4). |
+| `fallSize` | `12` | The size of the clump a leaf block shrinks to in autumn, once most of its leaves are gone. |
+| `lastSize` | `8` | The size of the tuft of last leaves on the end of a twig. |
+| `budSize` | `4` | The size of a bud, 3 to 8, or 0 for no buds. |
 | `firstSize` | `8` | The size of the clump of first leaves in spring. |
 | `halfSize` | `12` | The size of the clump of half-grown leaves. |
 
@@ -178,6 +186,7 @@ The leaves that drift down while the leaves fall have their own section, `fallin
 | `amount` | `3` | How many leaves fall, 1 (a few) to 10 (a shower). |
 | `distance` | `24` | How far from the player leaves start, in blocks, 8 to 48. |
 | `most` | `200` | How many leaves may be in the air at once, 0 to 2000. The game's own weather holds a few hundred raindrops, so 200 leaves cost about as much as light rain. |
+| `burst` | `3` | How many leaves a leaf block lets go when it loses leaves while you look its way, 0 to 8. 0 switches that off. |
 
 ### The rules of the world: `config/foliage-common.toml`
 
@@ -198,12 +207,12 @@ The file has three sections.
 | `spotShare` | `0.4` | The share of a tree's days that one leaf block takes for its own change. 1: all leaf blocks of a tree change together. |
 | `depthWeight` | `0.6` | How strictly the leaf blocks of a tree go in order of their depth in the crown. 1: strictly, 0: in no order. |
 | `deepest` | `4` | Dynamic Trees numbers leaf blocks by how well they are supplied: 1 at the far edge, higher toward the twig. This number or more counts as right at the twig. |
-| `kinds` | birch, oak, dark oak | The kinds of leaves that fall, one line each: the leaf block's id, the day its kind starts on (0 for the first kinds), and the order (`outside_in`: the edge of the crown goes first, or `inside_out`). All other leaves stay green. |
+| `kinds` | birch, oak, dark oak | The kinds of leaves that fall, one line each: the leaf block's id, the day its kind starts on (0 for the first kinds), and the order (`outside_in`: the edge of the crown goes first and the last leaves sit at the twigs, as all three do; or `inside_out`, which ends as a ring of leaves around a bare middle). All other leaves stay green. |
 
 The default list of kinds:
 
 ```toml
-kinds = ["dynamictrees:birch_leaves, 0, inside_out", "dynamictrees:oak_leaves, 1, outside_in", "dynamictrees:dark_oak_leaves, 2, outside_in"]
+kinds = ["dynamictrees:birch_leaves, 0, outside_in", "dynamictrees:oak_leaves, 1, outside_in", "dynamictrees:dark_oak_leaves, 2, outside_in"]
 ```
 
 If the fall or the return is set longer than autumn or spring are in the Calendar mod's settings, it is cut to the season's length.
@@ -245,17 +254,17 @@ In summer there is nothing to do: no tree holds a bare block then. The sweep loa
 - **On a server**: the server and every player need Foliage. The server holds the rules of the leaf calendar, sends them to the players and swaps the blocks of bare trees. A player with Foliage can still join a server without it; the trees then go through the year as a look only, by the rules of the player's own file.
 - **Snow mods and falling snow**: snow cannot lie on a bare crown, because nothing rests on a bare block. Snow that lay on a crown falls down with the leaves to the first block that can hold it, so a winter forest has its snow on the ground. Snow mods that lay snow on blocks (Snow! Real Magic and the like) are not hindered: they simply find nothing to lay it on up there.
 - **Distant Horizons**: far crowns keep their leaves all year. Distant Horizons builds its own picture of the land from the blocks of a chunk and keeps it for land nobody has been near for months, so bare blocks would make a patchwork of it: bare where someone happened to walk in winter, leafy everywhere else. Foliage hands it the leaf block wherever a bare block stands, as it builds that picture. Nothing of Distant Horizons is changed and nothing it has stored is written. Up close the crowns are bare as they should be; a season color of its own for far crowns is a later step.
-- **Resource packs**: the leaf cards and the pictures of thinned, last, young and half-grown leaves are made from whatever leaf textures are loaded, so a pack that changes the leaves changes them all. Animated or non-square leaf textures get none of them: such trees still go through the year (fewer and smaller pieces, then twigs), but with their one full picture.
-- **Fast graphics** (leaves that are not see-through): crowns are drawn from their outside only. Thinned leaves are shown as full ones, and the last leaves of autumn and the first of spring are not drawn.
-- **Leaves from other mods** (addons of Dynamic Trees): get outer faces, planes and clumps by themselves if they are drawn as a plain cube with one texture. For leaf cards and matching twigs, list the texture in a file `assets/minecraft/atlases/blocks.json` of a resource pack or mod:
+- **Resource packs**: the leaf cards and the pictures of thinned, last, young and half-grown leaves are made from whatever leaf textures are loaded, so a pack that changes the leaves changes them all. Animated or non-square leaf textures get none of them: such trees still go through the year (fewer and smaller pieces, then small branches), but with their one full picture. The small branches need no pictures of their own: they are drawn in the bark of the tree's branches, whatever pack that comes from.
+- **Fast graphics** (leaves that are not see-through): crowns are drawn from their outside only. Thinned leaves are shown as full ones, and the smaller clumps of autumn and spring as small solid cubes on their branches.
+- **Leaves from other mods** (addons of Dynamic Trees): get outer faces, planes and clumps by themselves if they are drawn as a plain cube with one texture. For leaf cards and the thinned pictures of autumn and spring, list the texture in a file `assets/minecraft/atlases/blocks.json` of a resource pack or mod:
 
   ```json
   {"sources": [{"type": "foliage:leaf_parts", "leaves": [
-      {"texture": "somemod:block/maple_leaves", "twigs": "foliage:block/twigs_brown"}
+      {"texture": "somemod:block/maple_leaves"}
   ]}]}
   ```
 
-  `twigs` names a set of twig pictures (`foliage:block/twigs_brown`, `twigs_birch` or `twigs_dark`, or your own: pictures named `<name>_0`, `<name>_1` and so on in the block textures, and `<name>_buds_0` and so on for the same twigs with buds).
+  The small branches of a bare tree are drawn in the bark of the tree's own branches, so there is nothing to list for them. (Files written for 0.4.0 may still name `twigs`; it is ignored.)
 
   To let such leaves fall in autumn as well, add their leaf block to `kinds` in `config/foliage-common.toml`.
 - **The pictures of the year** are made by a few numbers that a resource pack can change in the same file, with a field `pictures` next to `leaves`:
@@ -278,7 +287,8 @@ In summer there is nothing to do: no tree holds a bare block then. The sweep loa
 | 0.1.0 | Leaf shapes. |
 | 0.2.0 | The leaf calendar as a look: leaves thin out and fall over the last days of autumn, bare twigs in winter, buds and young leaves over the first days of spring, in the new shapes. |
 | 0.3.0 | Real bare branches: leaf blocks of bare trees are swapped for an empty stand-in, so rain, snow, light and players pass through winter crowns. |
-| 0.4.0 | The rest of the year (this version): leaves that drift down while they fall, trees that rest in winter and bear fruit in season, fruit and snow that come down with the leaves, `/foliage restore`, and far crowns that keep their leaves under Distant Horizons. |
+| 0.4.0 | The rest of the year: leaves that drift down while they fall, trees that rest in winter and bear fruit in season, fruit and snow that come down with the leaves, `/foliage restore`, and far crowns that keep their leaves under Distant Horizons. |
+| 0.5.0 | A better bare tree and a better fall (this version): small branches in the tree's own bark instead of flat twig pictures, leaf blocks that get smaller as their leaves fall, and leaves let go by a leaf block that changes in view. |
 
 Ideas for later: a season color of its own for the far crowns of Distant Horizons, and leaves that gather on the ground.
 
@@ -341,7 +351,7 @@ The jar is written to `build/libs/`. The build needs Java 21 and nothing else: D
 
 **Updating the libraries:** put the new jar into `libs/` under the name `<mod>-<version>.jar` and change the version in `gradle.properties`.
 
-The twig pictures are drawn by `tools/make_twigs.py` and the pictures of the leaves in the air by `tools/make_leaf_particles.py` (Python 3 with Pillow). Both sets are part of the repository; the scripts are only needed to change them.
+The pictures of the leaves in the air are drawn by `tools/make_leaf_particles.py` (Python 3 with Pillow). They are part of the repository; the script is only needed to change them.
 
 Distant Horizons is only needed to build against, never at runtime: `libs/distanthorizons-api-3.3.3.jar` holds its API alone, nothing of it goes into Foliage's jar, and a game without the mod never loads the class that names it.
 

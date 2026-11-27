@@ -25,7 +25,7 @@ public enum LeafStage {
     /** About a third of the leaves have fallen. */
     THIN,
 
-    /** About two thirds of the leaves have fallen. */
+    /** Most of the leaves have fallen: what is left has drawn back toward the branch. */
     THINNER,
 
     /** The last few leaves hang on. */

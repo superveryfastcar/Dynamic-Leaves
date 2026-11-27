@@ -56,7 +56,7 @@ public final class LeafLook implements Surround.LeafCover {
     @Nullable
     private LeafClock rememberedClock;
 
-    /** The question being answered, for {@link #covers}. Only set while {@link #recipe} runs. */
+    /** The question being answered, for {@link #leaves}. Only set while {@link #recipe} runs. */
     @Nullable
     private LeafClock clock;
     @Nullable
@@ -134,13 +134,16 @@ public final class LeafLook implements Surround.LeafCover {
     }
 
     /**
-     * Whether a neighboring leaf block hides what lies behind it at the
-     * moment in question: unless it is of a kind that sheds, stands where
-     * there is a winter and has lost most of its leaves.
+     * How much of a neighboring leaf block is there at the moment in
+     * question. It hides what lies behind it unless it is of a kind that
+     * sheds, stands where there is a winter and has lost most of its
+     * leaves; and it has nothing to speak of from its last leaves of
+     * autumn to its first of spring.
      */
     @Override
-    public boolean covers(BlockState state, int x, int y, int z) {
-        return stageOf(state, x, y, z).covers();
+    public int leaves(BlockState state, int x, int y, int z) {
+        LeafStage stage = stageOf(state, x, y, z);
+        return stage.covers() ? Surround.COVERS : stage.bareBlock() ? Surround.NOTHING : Surround.LEAVES;
     }
 
     /** The stage of a leaf block, between {@link #begin} and {@link #end}. */

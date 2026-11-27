@@ -12,8 +12,8 @@ import net.minecraft.core.Direction;
  * same {@link Recipe}.
  *
  * <h2>The rules in leaf</h2>
- * For a block in full leaf, and in the first two stages of autumn (the
- * same pieces, with thinned leaf pictures):
+ * For a block in full leaf, and in the first stage of autumn (the same
+ * pieces, with a thinned leaf picture):
  * <ul>
  *   <li>A leaf block with no open side is buried in the crown and shows
  *       nothing, in every shape and at every stage.</li>
@@ -27,65 +27,85 @@ import net.minecraft.core.Direction;
  *   <li><b>Bushy</b>: outer faces, one card, one inner plane, and a second
  *       card on a tip of the crown.</li>
  *   <li><b>Tufts</b>: a tip becomes a clump of leaves, an outermost tip a
- *       smaller clump on a twig; every other block is drawn as shell.</li>
- *   <li><b>Mixed</b>: an outermost tip becomes a clump on a twig; every
- *       other block is drawn as bushy.</li>
+ *       smaller clump (on a stick, where the limit on faces allows);
+ *       every other block is drawn as shell.</li>
+ *   <li><b>Mixed</b>: an outermost tip becomes a clump (on a stick, where
+ *       the limit on faces allows); every other block is drawn as bushy.</li>
  *   <li><b>Fast leaves</b>: outer faces and one inner plane, whatever the
  *       shape.</li>
  * </ul>
  *
  * <h2>The limit on faces</h2>
- * No leaf block is drawn from more faces than the settings allow
- * ({@link ShapeSettings#maxFaces}). The outer faces of the open sides are
- * always drawn. The other pieces are added one at a time, in the order the
- * rules above name them, and a piece that would go over the limit is left
- * out. With the limit at 6, the number of faces of a plain cube, a block
- * with one or two open sides still gets everything, a block with three or
- * four open sides gets one card and no plane, and a clump comes without
- * its twig.
+ * The leaves of no leaf block are drawn from more faces than the settings
+ * allow ({@link ShapeSettings#maxFaces}). The outer faces of the open sides
+ * are always drawn. The other pieces are added one at a time, in the order
+ * the rules above name them, and a piece that would go over the limit is
+ * left out. With the limit at 6, the number of faces of a plain cube, a
+ * block with one or two open sides still gets everything, a block with
+ * three or four open sides gets one card and no plane, and a clump comes
+ * without the stick that would carry it.
+ *
+ * <p>The mini branch of a leaf spot that has lost its leaves
+ * ({@link MiniBranch}) is not leaves and is not counted against this
+ * limit. What it costs is set by the number of its thinner twigs
+ * ({@link ShapeSettings#twigForks}).</p>
  *
  * <h2>Clumps</h2>
- * A clump without a twig sits against the side on which the block hangs on
- * to its tree ({@link Surround#support}), so it rests on its branch like a
- * smaller leaf block. A clump with a twig sits at the far end of the block
- * instead: the twig grows from the branch across the gap and spreads out
- * inside the clump, like a spray of leaves at the end of a twig. (A twig
- * under a clump that rests on the branch would stick out of the leaves on
- * the far side like antlers.) A leaf block that touches nothing is never
- * made a clump, and neither is one with something resting on top (a layer
- * of snow), because the snow would hang in the air.
+ * A clump sits against the side on which the block hangs on to its tree
+ * ({@link Surround#support}), so it rests on its branch like a smaller
+ * leaf block. Where the limit on faces allows a stick under it, it sits
+ * at the far end of the block instead: the stick grows from the branch
+ * across the gap and ends inside the clump, like a spray of leaves at the
+ * end of a twig. A leaf block that touches nothing is never made a clump,
+ * and neither is one with something resting on top (a layer of snow),
+ * because the snow would hang in the air.
  *
  * <h2>The rules through the year</h2>
- * For every shape but plain:
+ * Autumn runs like spring backwards: a leaf block thins, shrinks toward
+ * the side it hangs on to, and is gone. For every shape but plain:
  * <ul>
- *   <li><b>Last leaves</b> (the end of a spot's autumn): no outer faces any
- *       more. A spot with a twig ({@link #twigSpot}) shows the twig and one
- *       plane of last leaves along it; any other spot two upright planes.</li>
- *   <li><b>Bare</b>: the twig on a spot with a twig, nothing elsewhere.</li>
- *   <li><b>Buds</b>: as bare; the twig carries buds.</li>
- *   <li><b>First leaves</b>: a spot with a twig shows the budding twig and
- *       one plane of young leaves along it. Any other spot shows a small
- *       clump of young leaves against the side it hangs on to
- *       ({@link ShapeSettings#firstSize}), or two upright planes if it has
- *       no such side or carries snow.</li>
+ *   <li><b>Thinner</b> (most leaves gone): the block shrinks to a clump
+ *       against the side it hangs on to ({@link ShapeSettings#fallSize}).
+ *       On a spot with a mini branch ({@link #twigSpot}) its main twig
+ *       shows through the thinned leaves ({@link Recipe#forks}).</li>
+ *   <li><b>Last leaves</b> (the end of a spot's autumn): a spot with a
+ *       mini branch shows it with a small clump of leaves on the end of
+ *       its main twig ({@link ShapeSettings#lastSize},
+ *       {@link MiniBranch#tuftEnd}); any other spot a clump of that size
+ *       against the side it hangs on to.</li>
+ *   <li><b>Bare</b>: the mini branch on a spot that has one, nothing
+ *       elsewhere.</li>
+ *   <li><b>Buds</b>: as bare, with a bud on the end of the main twig
+ *       ({@link ShapeSettings#budSize}).</li>
+ *   <li><b>First leaves</b>: as the last leaves, with the young leaves of
+ *       spring and its own size ({@link ShapeSettings#firstSize}).</li>
  *   <li><b>Half grown</b>: a larger clump against the side the block hangs
- *       on to ({@link ShapeSettings#halfSize}); without such a side, outer
- *       faces and inner planes.</li>
+ *       on to ({@link ShapeSettings#halfSize}).</li>
  * </ul>
- * A clump of spring is never larger than the clump the spot will be in
- * full leaf. None of these needs more than six faces, so the limit on
- * faces always holds.
+ * A clump of autumn or spring is never larger than the clump the spot is
+ * in full leaf, and a spot that is a clump in full leaf keeps that clump
+ * while it is thinner or half grown. A spot that hangs on to nothing (or
+ * carries snow) cannot shrink toward a side: it stays a whole block while
+ * it is thinner or half grown, and shows two upright planes of leaves for
+ * its last and first ones. None of these needs more than six faces of
+ * leaves, so the limit on faces always holds.
  *
  * <h2>Inside the crown</h2>
  * A block whose six neighbors are all leaf blocks or full blocks
  * ({@link Surround#sheltered}) is buried in summer and costs nothing. While
  * leaves fall or come back, its neighbors show few leaves and it can be
- * seen between them, but never close up and never whole. So it is drawn
- * from fewer pieces than a block at the edge: outer faces only while it is
- * in leaf (no planes, cards or clump), one upright plane for its last or
- * first leaves, two for half-grown ones. Without this, a crown that is
- * losing or growing its leaves would need the most faces of the whole year
- * for blocks that are hardly seen.
+ * seen between them, but never close up and never whole. While it is
+ * thinner or half grown it is drawn as the outer faces toward the
+ * neighbors that have stopped hiding it and nothing else: the inside of a
+ * crown stays a mass of leaves while its outside shrinks.
+ *
+ * <h2>Where a mini branch starts</h2>
+ * A mini branch grows away from the side its spot hangs on to. Next to
+ * wood it starts at the block's side if the wood comes that far, and
+ * inside the wood if it does not ({@link Surround#woodReaches}). A spot
+ * that only hangs on to another leaf spot (the "more twigs" setting) gets
+ * the thinner kind that starts in the middle of that spot, where that
+ * spot's own main twig passes ({@link #twigBase}).
  */
 public final class ShapeRules {
 
@@ -117,8 +137,14 @@ public final class ShapeRules {
     }
 
     /**
-     * Whether a twig is drawn on a leaf spot when it is bare (and with
-     * buds, and under the last and first leaves).
+     * Whether a leaf spot has a mini branch: it is drawn when the spot is
+     * bare, with buds, under its last and first leaves, and through its
+     * leaves while most of them are gone in autumn.
+     *
+     * <p>With "more twigs", a spot that touches no wood gets one only if
+     * it hangs on to a leaf spot deeper in the crown: its main twig starts
+     * in the middle of that spot, and there has to be something there for
+     * it to grow from.</p>
      *
      * @param settings the player's choice ({@link ShapeSettings#winterTwigs})
      * @param surround what stands around the block ({@link Surround})
@@ -129,11 +155,37 @@ public final class ShapeRules {
             case NEAR:
                 return Surround.wood(surround) != null;
             case MORE:
-                return Surround.wood(surround) != null || depth >= settings.twigDepth();
+                return Surround.wood(surround) != null
+                        || depth >= settings.twigDepth() && Surround.heart(surround) != null;
             case NONE:
             default:
                 return false;
         }
+    }
+
+    /**
+     * Where the mini branch of a leaf spot starts: at the block's side
+     * next to wood that comes that far ({@link MiniBranch#FLUSH}), inside
+     * the wood next to a branch whose bark lies behind the side
+     * ({@link MiniBranch#REACH}), and in the middle of the leaf spot it
+     * hangs on to where it touches no wood ({@link MiniBranch#DEEP}).
+     *
+     * @param surround what stands around the block ({@link Surround})
+     */
+    public static int twigBase(int surround) {
+        if (Surround.wood(surround) == null) {
+            return MiniBranch.DEEP;
+        }
+        return Surround.woodReaches(surround) ? MiniBranch.FLUSH : MiniBranch.REACH;
+    }
+
+    /**
+     * Where the stick starts that carries a clump at the far end of its
+     * block: at the block's side, or inside the wood next to a branch
+     * whose bark lies behind the side.
+     */
+    private static int stemBase(int surround) {
+        return Surround.wood(surround) != null && !Surround.woodReaches(surround) ? MiniBranch.REACH : MiniBranch.FLUSH;
     }
 
     /**
@@ -157,8 +209,8 @@ public final class ShapeRules {
      *                 with their looks in mind
      * @param variant  the position's variant, 0 to 15
      * @param stage    the stage of the leaf calendar the block is at
-     * @param twigSpot whether the spot has a twig ({@link #twigSpot}); only
-     *                 looked at in the stages that draw one
+     * @param twigSpot whether the spot has a mini branch ({@link #twigSpot});
+     *                 only looked at in the stages that draw one
      * @return the recipe
      */
     public static int recipe(ShapeSettings settings, int surround, int variant, LeafStage stage, boolean twigSpot) {
@@ -169,50 +221,105 @@ public final class ShapeRules {
         }
         if (settings.shape() == LeafShape.PLAIN) {
             if (stage.leafless()) {
-                return twigSpot ? Recipe.withTwig(recipe, Surround.grow(surround)) : recipe;
+                return twigSpot ? leafless(settings, recipe, surround, stage) : recipe;
             }
             return recipe | Recipe.FACES_BIT;
         }
         Direction support = Surround.loaded(surround) ? null : Surround.support(surround);
         boolean sheltered = Surround.sheltered(surround);
         switch (stage) {
+            case THINNER:
+                return mostly(settings, recipe, surround, variant, support, sheltered, twigSpot, true);
             case LAST:
-                if (twigSpot) {
-                    return twigAndPlane(recipe, surround, variant);
-                }
-                return sheltered ? recipe | uprightPlane(variant) : recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+                return few(settings, recipe, surround, variant, support, sheltered, twigSpot, settings.lastSize());
             case BARE:
             case BUDS:
-                return twigSpot ? Recipe.withTwig(recipe, Surround.grow(surround)) : recipe;
+                return twigSpot ? leafless(settings, recipe, surround, stage) : recipe;
             case FIRST:
-                if (twigSpot) {
-                    return twigAndPlane(recipe, surround, variant);
-                }
-                if (sheltered) {
-                    return recipe | uprightPlane(variant);
-                }
-                if (support != null) {
-                    return Recipe.withClump(recipe, springClump(settings, open, settings.firstSize()), support);
-                }
-                return recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+                return few(settings, recipe, surround, variant, support, sheltered, twigSpot, settings.firstSize());
             case HALF:
-                if (sheltered) {
-                    return recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
-                }
-                if (support != null) {
-                    return Recipe.withClump(recipe, springClump(settings, open, settings.halfSize()), support);
-                }
-                return shell(recipe, open, variant, settings.maxFaces(), 3);
+                return mostly(settings, recipe, surround, variant, support, sheltered, false, false);
             case FULL:
             case THIN:
-            case THINNER:
             default:
-                return sheltered ? recipe | Recipe.FACES_BIT : inLeaf(settings, recipe, open, variant, support);
+                return sheltered ? recipe | Recipe.FACES_BIT : inLeaf(settings, recipe, open, variant, support, stemBase(surround));
         }
     }
 
+    /**
+     * A spot with a mini branch and no leaves: the mini branch, and in
+     * the days before the first leaves a bud on the end of its main twig.
+     */
+    private static int leafless(ShapeSettings settings, int recipe, int surround, LeafStage stage) {
+        int result = Recipe.withTwig(recipe, Surround.grow(surround), twigBase(surround));
+        if (stage == LeafStage.BUDS && settings.budSize() != 0) {
+            result = Recipe.withClump(result, settings.budSize(), null);
+        }
+        return result;
+    }
+
+    /**
+     * A spot with its last leaves of autumn or its first of spring: a
+     * small clump. On a spot with a mini branch the clump sits on the end
+     * of the main twig; elsewhere against the side the block hangs on to.
+     * If that side is a leaf block with no leaves to speak of, the clump
+     * would hang in the air with nothing near it, so the spot shows
+     * nothing: the last leaves of a tree hang on its twigs and on what is
+     * still in leaf, and the first ones come out there.
+     * A spot that hangs on to nothing shows upright planes of leaves.
+     *
+     * @param wanted the side of the clump ({@link ShapeSettings#lastSize}
+     *               or {@link ShapeSettings#firstSize})
+     */
+    private static int few(ShapeSettings settings, int recipe, int surround, int variant, @Nullable Direction support,
+                           boolean sheltered, boolean twigSpot, int wanted) {
+        int size = smallClump(settings, Recipe.open(recipe), wanted);
+        if (twigSpot) {
+            return Recipe.withClump(Recipe.withTwig(recipe, Surround.grow(surround), twigBase(surround)), size, null);
+        }
+        if (support != null) {
+            return Surround.supportBare(surround) ? recipe : Recipe.withClump(recipe, size, support);
+        }
+        return sheltered ? recipe | uprightPlane(variant) : recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+    }
+
+    /**
+     * A spot with most of its leaves gone in autumn, or half grown in
+     * spring: a clump against the side the block hangs on to. In autumn a
+     * spot with a mini branch shows its main twig through the thinned
+     * leaves.
+     *
+     * @param twigSpot whether the spot has a mini branch
+     * @param fall     true in autumn ({@link LeafStage#THINNER}), false in
+     *                 spring ({@link LeafStage#HALF})
+     */
+    private static int mostly(ShapeSettings settings, int recipe, int surround, int variant, @Nullable Direction support,
+                              boolean sheltered, boolean twigSpot, boolean fall) {
+        int open = Recipe.open(recipe);
+        if (sheltered) {
+            return recipe | Recipe.FACES_BIT;
+        }
+        if (support == null) {
+            // Nothing to shrink toward. Half-grown leaves have no card pictures, so spring takes the shell.
+            return fall ? inLeaf(settings, recipe, open, variant, null, MiniBranch.FLUSH)
+                    : shell(recipe, open, variant, settings.maxFaces(), 3);
+        }
+        int result;
+        if (leafClump(settings, Integer.bitCount(open)) != 0) {
+            // A clump in full leaf: the same clump in the same place, so that it does not jump.
+            result = inLeaf(settings, recipe, open, variant, support, stemBase(surround));
+        } else {
+            result = Recipe.withClump(recipe, fall ? settings.fallSize() : settings.halfSize(), support);
+        }
+        if (fall && twigSpot && Recipe.twig(result) == null) {
+            result = Recipe.withTwig(result, Surround.grow(surround), twigBase(surround));
+        }
+        return result;
+    }
+
     /** The pieces of a block in leaf: the rules of the shapes. */
-    private static int inLeaf(ShapeSettings settings, int recipe, int open, int variant, @Nullable Direction support) {
+    private static int inLeaf(ShapeSettings settings, int recipe, int open, int variant, @Nullable Direction support,
+                              int stemBase) {
         if (settings.fastLeaves()) {
             return shell(recipe, open, variant, settings.maxFaces(), 1);
         }
@@ -221,12 +328,12 @@ public final class ShapeRules {
         switch (settings.shape()) {
             case TUFTS:
                 if (size != 0) {
-                    return clump(recipe, open, size, support, openCount >= settings.clumpSides(), settings.maxFaces());
+                    return clump(recipe, open, size, support, openCount >= settings.clumpSides(), settings.maxFaces(), stemBase);
                 }
                 return shell(recipe, open, variant, settings.maxFaces(), 3);
             case MIXED:
                 if (size != 0) {
-                    return clump(recipe, open, size, support, true, settings.maxFaces());
+                    return clump(recipe, open, size, support, true, settings.maxFaces(), stemBase);
                 }
                 return bushy(recipe, open, openCount, variant, settings);
             case BUSHY:
@@ -261,11 +368,11 @@ public final class ShapeRules {
     }
 
     /**
-     * The side of a clump of spring: the size wanted, but not larger than
-     * the clump the spot is in full leaf (a spot must not shrink when its
-     * leaves are grown).
+     * The side of a clump of autumn or spring: the size wanted, but not
+     * larger than the clump the spot is in full leaf (a spot must not
+     * shrink when its leaves are grown, nor grow while it loses them).
      */
-    private static int springClump(ShapeSettings settings, int open, int wanted) {
+    private static int smallClump(ShapeSettings settings, int open, int wanted) {
         int grown = leafClump(settings, Integer.bitCount(open));
         return grown == 0 ? wanted : Math.min(wanted, grown);
     }
@@ -273,28 +380,6 @@ public final class ShapeRules {
     /** One of the two upright inner planes, picked by the position's variant. */
     private static int uprightPlane(int variant) {
         return (variant & 1) == 0 ? Recipe.PLANE_X : Recipe.PLANE_Z;
-    }
-
-    /**
-     * A twig in the direction the block grows in, and one inner plane that
-     * the twig lies in, so that the plane's leaves hang along the twig.
-     */
-    private static int twigAndPlane(int recipe, int surround, int variant) {
-        Direction grow = Surround.grow(surround);
-        int plane;
-        switch (grow.getAxis()) {
-            case X:
-                plane = Recipe.PLANE_Z;
-                break;
-            case Z:
-                plane = Recipe.PLANE_X;
-                break;
-            case Y:
-            default:
-                plane = uprightPlane(variant);
-                break;
-        }
-        return Recipe.withTwig(recipe | plane, grow);
     }
 
     /**
@@ -343,15 +428,17 @@ public final class ShapeRules {
     }
 
     /**
-     * A clump. If a twig is wanted and fits under the limit, the twig grows
-     * away from the side the block hangs on to and the clump sits at the
-     * twig's far end; otherwise the clump sits against the side the block
+     * A clump. If a stick is wanted and fits under the limit, the stick
+     * grows away from the side the block hangs on to and the clump sits
+     * at its far end; otherwise the clump sits against the side the block
      * hangs on to.
+     *
+     * @param stemBase where the stick starts ({@link #stemBase})
      */
-    private static int clump(int recipe, int open, int size, Direction support, boolean twig, int maxFaces) {
+    private static int clump(int recipe, int open, int size, Direction support, boolean twig, int maxFaces, int stemBase) {
         Direction far = support.getOpposite();
-        if (twig && Recipe.clumpFaces(open, far) + Recipe.FACES_PER_TWIG <= maxFaces) {
-            return Recipe.withTwig(Recipe.withClump(recipe, size, far), far);
+        if (twig && Recipe.clumpFaces(open, far) + Recipe.FACES_PER_STEM <= maxFaces) {
+            return Recipe.withTwig(Recipe.withClump(recipe, size, far), far, stemBase);
         }
         return Recipe.withClump(recipe, size, support);
     }

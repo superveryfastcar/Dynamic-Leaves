@@ -31,6 +31,22 @@ Owner's words (fixed):
    (Dynamic Trees is MIT), coolcritter22 in everything that reaches GitHub or
    the mod, vanilla biomes and trees first.
 
+Owner's words after seeing the pictures of 0.4.0 (2026-11-27, fixed, built
+in 0.5.0):
+
+7. The winter twig must fit Dynamic Trees and "quite literally sit inside
+   the leaf block. It should be 3d, just like the other branches." "Think
+   of the twig texture like mini branches. They can branch in several
+   directions within a block. Maybe one protruding one with 3 smaller
+   protruding from it." The step from autumn 12 to 13 "looks awful".
+8. "The leaf thinning could be a mix of leaf blocks getting smaller, getting
+   to the state theyre in at autumn 11, maybe slightly fuller, and
+   disappearing."
+9. "There should probably also be some sort of effect for it if the player
+   is looking rather than just instant replacement maybe like block
+   breaking visual effect or something idk. If its not too performance
+   costly."
+
 On decision cards (2026-11-27, open; built on Claude's pick until answered):
 
 - Winter leaf spot: placeholder block with twigs near branches (pick),
@@ -680,6 +696,95 @@ set to pick the other one. Dynamic Trees' own meaning would leave it to the
 order the mods happen to load in. Foliage wins because the leaves of the
 trees go by the Calendar date, and a tree that rested by another mod's
 reckoning would stand bare in the wrong week.
+
+### 0.5.0 as built (2026-11-27): mini branches, the shrinking fall, the burst
+
+Three things Lucas asked for after the pictures of 0.4.0 (decisions 7 to 9).
+All three are drawing only: the server, the bare block, the walker and the
+leaf calendar are as in 0.4.0.
+
+**Mini branches (`shape/MiniBranch`, `client/model/QuadMaker.box`).** The
+flat twig pictures are gone, with their 24 PNG files, their atlas entries
+and `tools/make_twigs.py`. A leaf spot of a bare tree that touches wood now
+holds a mini branch: boxes along the axes in the bark of the tree's own
+branch, which is how Dynamic Trees builds its branches (read in its
+`BasicBranchBlockBakedModel`: a core box and sleeves to the block sides,
+bark columns picked by radius). Nothing of its code is copied; the boxes
+and the bark coordinates are Foliage's own.
+
+- The main twig is 2 by 2 pixels, the thickness of the thinnest branch of
+  Dynamic Trees, and 9 to 12 pixels long. Up to three twigs of 1 by 1
+  pixel leave it at different heights in different directions. Four ways
+  of setting them times four quarter turns give sixteen mini branches,
+  picked by the position's variant.
+- Where it starts depends on the wood: at the block's side where a thin
+  branch reaches it with a stub of its own (`FLUSH`; the question Dynamic
+  Trees asks to decide about the stub, `getRadiusForConnection`, is asked
+  here too, so the two always agree), seven pixels inside a thicker branch
+  whose bark lies behind the side (`REACH`), and in the middle of the leaf
+  spot it hangs on to for the "more twigs" setting (`DEEP`, a thinner one
+  with two twigs).
+- The bark comes from the model of the family's branch block (its particle
+  picture), then the family's plain log, then oak log. A leaf kind with no
+  bark gets no mini branches, and the log says so once.
+- Faces: 5 for the main twig, 4 for each thinner one (its far end is one
+  pixel and is left out), so 17 for a whole mini branch. All measures that
+  could meet a leaf cube sit a quarter of a pixel off, so no two faces
+  ever share a plane and nothing flickers.
+- New settings: `twigForks` (0 to 3). `winterTwigs` and `twigDepth` keep
+  their names and now choose mini branches.
+
+**The shrinking fall (`shape/ShapeRules`: `mostly`, `few`, `leafless`).**
+A leaf block no longer goes from a whole block of specks to a flat twig.
+
+| Stage | A spot that touches wood | Another spot |
+| --- | --- | --- |
+| Thin | the pieces of full leaf, thinned picture | the same |
+| Most leaves gone | a clump of 12 against the wood, the main twig showing | a clump of 12 against the spot it hangs on to |
+| Last leaves | the mini branch, a tuft of 8 on the end of its main twig | a clump of 8 against the spot it hangs on to, or nothing if that spot has no leaves |
+| Bare | the mini branch | nothing |
+| Buds | the mini branch, a bud of 4 on the end of its main twig | nothing |
+| First leaves | the mini branch, a tuft of 8 on its end | a clump of 8 against a spot in leaf, else nothing |
+| Half grown | a clump of 12 against the wood | a clump of 12 against the spot it hangs on to |
+
+- The second picture of autumn is fuller than it was (half of the leaves
+  gone instead of two thirds), because getting smaller now says "fewer
+  leaves" as well. The picture of the last leaves is only used on the rare
+  spot that hangs on to nothing.
+- A clump never grows while its leaves fall and never shrinks while they
+  come back (checked for every surrounding in `piecesAtEveryStage`).
+- `Surround` got one more bit: whether the leaf block toward the heart has
+  no leaves to speak of. The answer comes from the same question that is
+  asked about every leaf neighbor anyway (`LeafCover.leaves`), so it costs
+  nothing more.
+- New settings: `fallSize`, `lastSize`, `budSize`.
+
+**The burst (`client/fall/LeafBursts`).** At a step of the leaf clock
+during the fall, the chunk sections around the player are gone through,
+nearest first, a few per tick. A leaf spot in a cone of 120 degrees in
+front of the player (or within 4 blocks) whose stage moved on lets go of
+`burst` leaves (default 3), the same particles as the leaves in the air,
+under the same cap. A block-breaking effect was the other idea; it was not
+taken because breaking particles are made per block by the game's own
+code, show the block's whole texture as square crumbs, and cannot be
+capped per player. Leaves that let go read as what is happening.
+
+Claude's own decisions in 0.5.0, for Lucas to overrule:
+
+- The mini branch is as thick as the thinnest branch of Dynamic Trees, so
+  it reads as that branch going on. A thinner main twig would make the
+  step from branch to mini branch visible.
+- Every leaf spot next to wood gets one (as in 0.4.0's "twigs near
+  branches"). That is what makes a bare crown dense, and what winter costs.
+- The thinner twigs have no far end face.
+- Last and first leaves that would hang next to a bare spot are not drawn.
+- Birch sheds from the far edge inward like the other kinds (it went from
+  the twigs outward since 0.2.0, also Claude's choice). With leaves that
+  draw back to the branches, the other order ended as a ring of leaf
+  blocks in the air around a bare middle.
+- At "most leaves gone" only the main twig is drawn under the clump; the
+  thinner twigs appear with the last leaves, when the clump has drawn back
+  to a tuft and they could be seen.
 
 ## Tests
 

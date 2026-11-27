@@ -15,13 +15,17 @@ public enum TreeOrder {
 
     /**
      * The far edge of the crown goes first and the last leaves hang on
-     * right at the twigs, as on an oak.
+     * right at the twigs. The order of every kind the mod ships with: the
+     * leaves draw back toward the branches, and the last of them sit on
+     * the small branches of the bare tree.
      */
     OUTSIDE_IN,
 
     /**
      * The leaves at the twigs go first and the last hang on at the far
-     * edge of the crown, as on a birch.
+     * edge of the crown. A crown then ends as a ring of leaves around a
+     * bare middle, a block or two away from any wood, so no kind uses it
+     * by default; it is kept for those who want it.
      */
     INSIDE_OUT;
 

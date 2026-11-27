@@ -1,6 +1,7 @@
 package io.github.superveryfastcar.foliage.client.model;
 
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
+import com.dtteam.dynamictrees.tree.family.Family;
 import io.github.superveryfastcar.foliage.Foliage;
 import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.block.Twins;
@@ -11,15 +12,17 @@ import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.seasons.api.client.SeasonsClientApi;
 import java.util.ArrayList;
-import java.util.IdentityHashMap;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.TreeSet;
 import java.util.concurrent.atomic.LongAdder;
 import javax.annotation.Nullable;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.block.BlockModelShaper;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.texture.MissingTextureAtlasSprite;
 import net.minecraft.client.renderer.texture.TextureAtlas;
 import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
@@ -32,6 +35,7 @@ import net.minecraft.resources.ResourceLocation;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
 import net.minecraft.world.level.block.Block;
+import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.LeavesBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.event.ModelEvent;
@@ -76,12 +80,21 @@ public final class LeafModels {
     private static final LongAdder BLOCKS = new LongAdder();
     private static final LongAdder FACES = new LongAdder();
     private static final LongAdder SLANTED = new LongAdder();
+    private static final LongAdder BARK = new LongAdder();
 
     /** The settings in use. */
     private static volatile Active current = new Active(ShapeSettings.DEFAULT, 0);
 
     /** The models that were put in place at the last loading of resources. */
     private static volatile List<LeafModel> models = List.of();
+
+    /**
+     * What decides how a leaf model is wrapped: the model, and the bark of
+     * the tree the leaves grow on. Two kinds of leaves that share a model
+     * but grow on different wood get a wrapper each.
+     */
+    private record Wrapped(BakedModel model, @Nullable TextureAtlasSprite bark) {
+    }
 
     private LeafModels() {
     }
@@ -139,15 +152,16 @@ public final class LeafModels {
      * named in the log.</p>
      */
     public static void wrap(ModelEvent.ModifyBakingResult event) {
-        Map<ResourceLocation, ResourceLocation> twigsByTexture = LeafPartsSource.takeMade();
+        Set<ResourceLocation> listed = LeafPartsSource.takeMade();
         // The game often shares one finished model between many block
         // states (all states of a leaf block, for one). Each is looked at
         // and wrapped once.
-        Map<BakedModel, BakedModel> decided = new IdentityHashMap<>();
+        Map<Wrapped, BakedModel> decided = new HashMap<>();
         List<LeafModel> wrapped = new ArrayList<>();
         TreeSet<String> done = new TreeSet<>();
         TreeSet<String> skipped = new TreeSet<>();
         TreeSet<String> withoutCards = new TreeSet<>();
+        TreeSet<String> withoutBark = new TreeSet<>();
         RandomSource random = RandomSource.create();
         for (Block block : BuiltInRegistries.BLOCK) {
             // A bare block gets the model of its leaf further down.
@@ -156,16 +170,21 @@ public final class LeafModels {
                 continue;
             }
             String name = BuiltInRegistries.BLOCK.getKey(block).toString();
+            TextureAtlasSprite bark = bark(event, leaves);
+            if (bark == null) {
+                withoutBark.add(name);
+            }
             for (BlockState state : block.getStateDefinition().getPossibleStates()) {
                 ModelResourceLocation location = BlockModelShaper.stateToModelLocation(state);
                 BakedModel model = event.getModels().get(location);
                 if (model == null || model instanceof LeafModel) {
                     continue;
                 }
-                BakedModel replacement = decided.get(model);
+                Wrapped key = new Wrapped(model, bark);
+                BakedModel replacement = decided.get(key);
                 if (replacement == null) {
                     // Foliage draws the year itself: it builds on the model under Seasons' bare-tree look.
-                    LeafModel leafModel = wrapOne(event, SeasonsClientApi.withoutBareLeaves(model), state, random, twigsByTexture);
+                    LeafModel leafModel = wrapOne(event, SeasonsClientApi.withoutBareLeaves(model), state, random, listed, bark);
                     if (leafModel != null) {
                         wrapped.add(leafModel);
                         if (leafModel.sprites().card() == null) {
@@ -173,7 +192,7 @@ public final class LeafModels {
                         }
                     }
                     replacement = leafModel != null ? leafModel : model;
-                    decided.put(model, replacement);
+                    decided.put(key, replacement);
                 }
                 if (replacement != model) {
                     event.getModels().put(location, replacement);
@@ -209,8 +228,53 @@ public final class LeafModels {
             Foliage.LOGGER.info("Foliage: no leaf cards for {} (their texture is not listed in an atlas source of type "
                     + "foliage:leaf_parts, or is not square)", withoutCards);
         }
+        if (!withoutBark.isEmpty()) {
+            Foliage.LOGGER.info("Foliage: no mini branches for {} (no bark found for their tree)", withoutBark);
+        }
         if (!skipped.isEmpty()) {
             Foliage.LOGGER.info("Foliage: left alone, because not drawn as a plain cube with one texture: {}", skipped);
+        }
+    }
+
+    /**
+     * The bark of the tree a kind of leaves grows on, for its mini
+     * branches: the bark the tree's own branches are drawn in. Dynamic
+     * Trees' branch model gives its bark as its "particle" picture (the
+     * one that flies off when a branch is broken). If the tree has no
+     * branch block or that model has no picture, the tree's ordinary log
+     * is asked, and after that the oak log.
+     *
+     * @return the bark, or null if none of the three has a picture
+     */
+    @Nullable
+    private static TextureAtlasSprite bark(ModelEvent.ModifyBakingResult event, DynamicLeavesBlock leaves) {
+        TextureAtlasSprite bark = null;
+        try {
+            Family family = leaves.getLeavesProperties().getFamily();
+            bark = family.getBranch().map(branch -> particle(event, branch)).orElse(null);
+            if (bark == null) {
+                bark = family.getPrimitiveLog().map(log -> particle(event, log)).orElse(null);
+            }
+        } catch (RuntimeException e) {
+            // Leaves of a tree that is not set up the usual way: the oak log will do.
+            Foliage.LOGGER.debug("Foliage: could not find the tree of {}", leaves, e);
+        }
+        return bark != null ? bark : particle(event, Blocks.OAK_LOG);
+    }
+
+    /** The "particle" picture of a block's model, or null if it has none. */
+    @Nullable
+    private static TextureAtlasSprite particle(ModelEvent.ModifyBakingResult event, Block block) {
+        BakedModel model = event.getModels().get(BlockModelShaper.stateToModelLocation(block.defaultBlockState()));
+        if (model == null) {
+            return null;
+        }
+        try {
+            TextureAtlasSprite sprite = model.getParticleIcon(ModelData.EMPTY);
+            return sprite == null || MissingTextureAtlasSprite.getLocation().equals(sprite.contents().name()) ? null : sprite;
+        } catch (RuntimeException e) {
+            // A model from another mod that cannot be asked this way.
+            return null;
         }
     }
 
@@ -219,11 +283,13 @@ public final class LeafModels {
      * one face on each of the six sides, all with the same picture and
      * tint, and nothing else.
      *
+     * @param listed the leaf textures that pictures were made from
+     * @param bark   the bark of the tree these leaves grow on, or null
      * @return the wrapper, or null if the model is drawn some other way
      */
     @Nullable
     private static LeafModel wrapOne(ModelEvent.ModifyBakingResult event, BakedModel model, BlockState state,
-                                     RandomSource random, Map<ResourceLocation, ResourceLocation> twigsByTexture) {
+                                     RandomSource random, Set<ResourceLocation> listed, @Nullable TextureAtlasSprite bark) {
         TextureAtlasSprite leaf = null;
         int tint = 0;
         try {
@@ -254,39 +320,22 @@ public final class LeafModels {
             return null;
         }
         ResourceLocation texture = leaf.contents().name();
-        ResourceLocation twigBase = twigsByTexture.get(texture);
         // Only a texture that is listed in an atlas source has pictures made from it.
-        boolean listed = twigBase != null;
-        if (twigBase == null) {
-            twigBase = LeafPartsSource.DEFAULT_TWIGS;
-        }
+        boolean made = listed.contains(texture);
         TextureAtlasSprite[] leaves = new TextureAtlasSprite[LeafPicture.COUNT];
         TextureAtlasSprite[] cards = new TextureAtlasSprite[LeafPicture.CARD_COUNT];
         for (int number = 0; number < LeafPicture.COUNT; number++) {
             LeafPicture which = LeafPicture.byNumber(number);
-            TextureAtlasSprite made = number == 0 || !listed ? null : sprite(event, LeafPartsSource.leafName(texture, which));
+            TextureAtlasSprite own = number == 0 || !made ? null : sprite(event, LeafPartsSource.leafName(texture, which));
             // Without a picture of its own, a stage is drawn with the leaf texture itself.
-            leaves[number] = made != null ? made : leaf;
+            leaves[number] = own != null ? own : leaf;
             if (number < LeafPicture.CARD_COUNT) {
                 ResourceLocation cardName = LeafPartsSource.cardName(texture, which);
-                TextureAtlasSprite card = listed && cardName != null ? sprite(event, cardName) : null;
+                TextureAtlasSprite card = made && cardName != null ? sprite(event, cardName) : null;
                 cards[number] = card != null ? card : cards[0];
             }
         }
-        List<TextureAtlasSprite> twigs = new ArrayList<>();
-        List<TextureAtlasSprite> budTwigs = new ArrayList<>();
-        ResourceLocation budBase = LeafPartsSource.budTwigs(twigBase);
-        for (int number = 0; number < LeafPartsSource.MAX_TWIG_PICTURES; number++) {
-            TextureAtlasSprite twig = twigSprite(event, twigBase.withSuffix("_" + number));
-            if (twig == null) {
-                break;
-            }
-            twigs.add(twig);
-            TextureAtlasSprite withBuds = twigSprite(event, budBase.withSuffix("_" + number));
-            budTwigs.add(withBuds != null ? withBuds : twig);
-        }
-        return new LeafModel(model, new LeafSprites(leaves, cards, twigs.toArray(TextureAtlasSprite[]::new),
-                budTwigs.toArray(TextureAtlasSprite[]::new)), tint);
+        return new LeafModel(model, new LeafSprites(leaves, cards, bark), tint);
     }
 
     /** A picture from the block atlas, or null if the atlas has none of that name. */
@@ -295,19 +344,6 @@ public final class LeafModels {
     private static TextureAtlasSprite sprite(ModelEvent.ModifyBakingResult event, ResourceLocation name) {
         TextureAtlasSprite sprite = event.getTextureGetter().apply(new Material(TextureAtlas.LOCATION_BLOCKS, name));
         return sprite.contents().name().equals(name) ? sprite : null;
-    }
-
-    /**
-     * A twig picture from the block atlas, or null if there is none of
-     * that name. Twig pictures are ordinary texture files, so the file is
-     * looked for first: the end of a set of twigs is found by asking for
-     * one picture more than it has, and asking the atlas for a picture it
-     * does not have puts a warning into the player's log.
-     */
-    @Nullable
-    private static TextureAtlasSprite twigSprite(ModelEvent.ModifyBakingResult event, ResourceLocation name) {
-        ResourceLocation file = name.withPath(path -> "textures/" + path + ".png");
-        return Minecraft.getInstance().getResourceManager().getResource(file).isPresent() ? sprite(event, name) : null;
     }
 
     // ------------------------------------------------------------------
@@ -387,13 +423,21 @@ public final class LeafModels {
         return count;
     }
 
-    /** Counts one answer of a leaf model. Only called when {@link #COUNTING} is on. */
-    static void count(boolean block, int faces, int slanted) {
+    /**
+     * Counts one answer of a leaf model. Only called when {@link #COUNTING} is on.
+     *
+     * @param block   whether this answer is the one that stands for the block
+     * @param faces   how many faces were handed out
+     * @param slanted how many of them stand at a slant
+     * @param bark    how many of them belong to a mini branch
+     */
+    static void count(boolean block, int faces, int slanted, int bark) {
         if (block) {
             BLOCKS.increment();
         }
         FACES.add(faces);
         SLANTED.add(slanted);
+        BARK.add(bark);
     }
 
     /** Sets the counters back to zero. */
@@ -401,14 +445,16 @@ public final class LeafModels {
         BLOCKS.reset();
         FACES.reset();
         SLANTED.reset();
+        BARK.reset();
     }
 
     /**
      * The counters since the last reset: leaf blocks handed to the chunk
-     * builder, their faces, and how many of those stand at a slant. All
-     * zero unless the game runs as the developer's self test.
+     * builder, their faces, how many of those stand at a slant, and how
+     * many belong to mini branches. All zero unless the game runs as the
+     * developer's self test.
      */
     public static long[] counters() {
-        return new long[] {BLOCKS.sum(), FACES.sum(), SLANTED.sum()};
+        return new long[] {BLOCKS.sum(), FACES.sum(), SLANTED.sum(), BARK.sum()};
     }
 }

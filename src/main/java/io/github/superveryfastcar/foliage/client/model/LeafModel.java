@@ -6,16 +6,18 @@ import io.github.superveryfastcar.foliage.season.LeafClock;
 import io.github.superveryfastcar.foliage.season.LeafStage;
 import io.github.superveryfastcar.foliage.shape.LeafLook;
 import io.github.superveryfastcar.foliage.shape.LeafPicture;
+import io.github.superveryfastcar.foliage.shape.MiniBranch;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeRules;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.foliage.shape.Surround;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import javax.annotation.Nullable;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
-import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
@@ -195,7 +197,7 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             }
             List<BakedQuad> quads = super.getQuads(state, side, rand, data, renderType);
             if (LeafModels.COUNTING) {
-                LeafModels.count(side == null, quads.size(), 0);
+                LeafModels.count(side == null, quads.size(), 0, 0);
             }
             return quads;
         }
@@ -203,11 +205,12 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             return NOTHING;
         }
         // Where leaves cannot be see-through (the game's "fast" graphics)
-        // only the outside of the block is drawn, as the game does itself.
+        // only the pieces are drawn that are solid things: see Built.solid.
         boolean solid = renderType == RenderType.solid();
         List<BakedQuad> quads = solid ? built.solid : built.cutout;
         if (LeafModels.COUNTING) {
-            LeafModels.count(true, quads.size(), solid ? 0 : Recipe.slantedQuadCount(built.recipe));
+            LeafModels.count(true, quads.size(), solid ? 0 : Recipe.slantedQuadCount(built.recipe),
+                    solid && Recipe.solidWhole(built.recipe) ? 0 : built.bark);
         }
         return quads;
     }
@@ -229,19 +232,25 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         final List<BakedQuad> cutout;
 
         /**
-         * The faces where leaves are not see-through: the outer faces of
-         * the open sides, or none at a stage with few leaves
-         * ({@link Recipe#solid}).
+         * The faces where leaves are not see-through (the game's "fast"
+         * graphics): a whole block while the spot is in leaf, after that
+         * the pieces that are solid things (the outer faces while most
+         * leaves are there, the clump, the mini branch) and none of the
+         * flat pictures ({@link Recipe#solidQuadCount}).
          */
         final List<BakedQuad> solid;
+
+        /** How many of the faces belong to the mini branch. Only for the self test's counting. */
+        final int bark;
 
         /** A ready-made note for step 2 that holds this object. */
         final ModelData data;
 
-        Built(int recipe, List<BakedQuad> cutout, List<BakedQuad> solid) {
+        Built(int recipe, List<BakedQuad> cutout, List<BakedQuad> solid, int bark) {
             this.recipe = recipe;
             this.cutout = cutout;
             this.solid = solid;
+            this.bark = bark;
             this.data = ModelData.of(BUILT, this);
         }
     }
@@ -267,8 +276,12 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         private final BakedQuad[][][][] cards = new BakedQuad[LeafPicture.CARD_COUNT][Recipe.VARIANTS][2][];
         /** Clumps by picture, size in pixels and anchor (0 for none, else 1 plus the side's number); six faces each, by side. */
         private final BakedQuad[][][][] clumps = new BakedQuad[LeafPicture.COUNT][16][7][];
-        /** Twigs, bare (0) or with buds (1), by growing direction and variant. */
-        private final BakedQuad[][][][] twigs = new BakedQuad[2][6][Recipe.VARIANTS][];
+        /** Tufts (clumps on the end of a mini branch) by picture, size, growing direction and where they end. */
+        private final Map<Integer, BakedQuad[]> tufts = new HashMap<>();
+        /** Mini branches by growing direction, by where they start, by variant and by the number of their thinner twigs. */
+        private final BakedQuad[][][][][] branches = new BakedQuad[6][4][Recipe.VARIANTS][MiniBranch.MAX_FORKS + 1][];
+        /** The sticks that carry a clump, by growing direction, by where they start and by the clump's size. */
+        private final BakedQuad[][][][] stems = new BakedQuad[6][4][16][];
 
         Cache(int version, ShapeSettings settings) {
             this.version = version;
@@ -320,24 +333,46 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
                     addAll(cutout, card(picture, variant, index));
                 }
             }
+            // The clump and the mini branch are solid things: they are drawn the same whether leaves are see-through or not.
+            List<BakedQuad> body = new ArrayList<>(26);
             int clump = Recipe.clump(recipe);
+            Direction grow = Recipe.twig(recipe);
+            int base = Recipe.twigBase(recipe);
             if (clump != 0) {
-                Direction anchor = Recipe.anchor(recipe);
-                BakedQuad[] faces = clump(picture, clump, anchor);
-                // The face against a covered side cannot be seen.
-                boolean hidden = Recipe.clumpFaces(recipe) == 5;
-                for (Direction side : DIRECTIONS) {
-                    if (!(hidden && side == anchor)) {
-                        cutout.add(faces[side.ordinal()]);
+                LeafPicture clumpPicture = LeafPicture.forClump(stage);
+                if (Recipe.tuft(recipe)) {
+                    addAll(body, tuft(clumpPicture, clump, grow, MiniBranch.tuftEnd(base, variant, clump)));
+                } else {
+                    Direction anchor = Recipe.anchor(recipe);
+                    BakedQuad[] faces = clump(clumpPicture, clump, anchor);
+                    // The face against a covered side cannot be seen.
+                    boolean hidden = Recipe.clumpFaces(recipe) == 5;
+                    for (Direction side : DIRECTIONS) {
+                        if (!(hidden && side == anchor)) {
+                            body.add(faces[side.ordinal()]);
+                        }
                     }
                 }
             }
-            Direction grow = Recipe.twig(recipe);
-            if (grow != null && sprites.twigs().length > 0) {
-                // A twig carries buds before its leaves are out and while the first ones are.
-                addAll(cutout, twig(stage == LeafStage.BUDS || stage == LeafStage.FIRST, grow, variant));
+            int bark = 0;
+            if (grow != null && sprites.bark() != null) {
+                bark = -body.size();
+                addAll(body, Recipe.stemOnly(recipe) ? stem(grow, base, clump)
+                        : branch(grow, base, variant, Recipe.forks(recipe, settings.forks())));
+                bark += body.size();
             }
-            return new Built(recipe, List.copyOf(cutout), Recipe.solid(recipe) ? List.copyOf(outer) : NOTHING);
+            cutout.addAll(body);
+            List<BakedQuad> solid;
+            if (Recipe.solidWhole(recipe)) {
+                solid = outer;
+            } else {
+                solid = new ArrayList<>(body.size() + 6);
+                if (Recipe.solidOuter(recipe)) {
+                    solid.addAll(outer);
+                }
+                solid.addAll(body);
+            }
+            return new Built(recipe, List.copyOf(cutout), solid.isEmpty() ? NOTHING : List.copyOf(solid), bark);
         }
 
         private BakedQuad face(LeafPicture picture, Direction side, int turn) {
@@ -373,15 +408,40 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             return row[anchorCode];
         }
 
-        private BakedQuad[] twig(boolean buds, Direction grow, int variant) {
-            BakedQuad[][] row = twigs[buds ? 1 : 0][grow.ordinal()];
-            if (row[variant] == null) {
-                // Two of the twig pictures per twig, a different pair per variant.
-                TextureAtlasSprite[] pictures = buds ? sprites.budTwigs() : sprites.twigs();
-                row[variant] = QuadMaker.twig(pictures[(variant & 3) % pictures.length],
-                        pictures[((variant >> 2) + 1 + (variant & 3)) % pictures.length], grow);
+        private BakedQuad[] tuft(LeafPicture picture, int size, Direction grow, int end) {
+            int key = picture.ordinal() | size << 4 | grow.ordinal() << 8 | end << 12;
+            return tufts.computeIfAbsent(key, k -> QuadMaker.tuft(sprites.leaf(picture), size, grow, end, tint));
+        }
+
+        /**
+         * A mini branch: the main twig and thinner ones.
+         *
+         * @param forks how many thinner twigs at most
+         */
+        private BakedQuad[] branch(Direction grow, int base, int variant, int forks) {
+            BakedQuad[][] row = branches[grow.ordinal()][base][variant];
+            if (row[forks] == null) {
+                List<BakedQuad> quads = new ArrayList<>(MiniBranch.faceCount(base, forks));
+                for (MiniBranch.Box box : MiniBranch.boxes(base, variant, forks)) {
+                    addAll(quads, QuadMaker.box(sprites.bark(), box, grow));
+                }
+                row[forks] = quads.toArray(BakedQuad[]::new);
             }
-            return row[variant];
+            return row[forks];
+        }
+
+        /**
+         * The stick that carries a clump at the far end of its block: it
+         * ends a pixel inside the clump.
+         *
+         * @param clump the side of the clump in pixels
+         */
+        private BakedQuad[] stem(Direction grow, int base, int clump) {
+            BakedQuad[][] row = stems[grow.ordinal()][base];
+            if (row[clump] == null) {
+                row[clump] = QuadMaker.box(sprites.bark(), MiniBranch.stem(base, 16.0F - clump + 1.0F), grow);
+            }
+            return row[clump];
         }
 
         private void addAll(List<BakedQuad> list, BakedQuad[] piece) {

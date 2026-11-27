@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.client;
 
 import io.github.superveryfastcar.foliage.client.fall.FallSettings;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
+import io.github.superveryfastcar.foliage.shape.MiniBranch;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.foliage.shape.WinterTwigs;
 import net.neoforged.neoforge.common.ModConfigSpec;
@@ -51,8 +52,11 @@ public final class FoliageClientConfig {
     /** The size of an outermost tip's clump in the "mixed" shape. */
     public static final ModConfigSpec.IntValue CLUMP_SIZE;
 
-    /** On which leaf spots of a bare tree a twig is drawn. */
+    /** On which leaf spots of a bare tree a mini branch is drawn. */
     public static final ModConfigSpec.EnumValue<WinterTwigs> WINTER_TWIGS;
+
+    /** How many thinner twigs leave the main twig of a mini branch. */
+    public static final ModConfigSpec.IntValue TWIG_FORKS;
 
     /** With "more twigs": from which depth in the crown a leaf spot gets a twig. */
     public static final ModConfigSpec.IntValue TWIG_DEPTH;
@@ -62,6 +66,15 @@ public final class FoliageClientConfig {
 
     /** The size of the clump of half-grown leaves in spring. */
     public static final ModConfigSpec.IntValue HALF_SIZE;
+
+    /** The size of the bud at the end of a mini branch, 0 for none. */
+    public static final ModConfigSpec.IntValue BUD_SIZE;
+
+    /** The size of the clump a leaf block shrinks to in autumn. */
+    public static final ModConfigSpec.IntValue FALL_SIZE;
+
+    /** The size of the clump of last leaves in autumn. */
+    public static final ModConfigSpec.IntValue LAST_SIZE;
 
     /** Whether leaves drift down from the crowns while the leaves fall. */
     public static final ModConfigSpec.BooleanValue FALLING_LEAVES;
@@ -74,6 +87,9 @@ public final class FoliageClientConfig {
 
     /** How many leaves may be on their way at once. */
     public static final ModConfigSpec.IntValue FALL_MOST;
+
+    /** How many leaves a leaf block lets go when it changes in view. */
+    public static final ModConfigSpec.IntValue FALL_BURST;
 
     static {
         ShapeSettings standard = ShapeSettings.DEFAULT;
@@ -92,16 +108,24 @@ public final class FoliageClientConfig {
         FAST_LEAVES = b.comment("true: the fewest faces per leaf block, whatever the shape: only the outside of the crown",
                                 "and one leaf plane inside each block. For slow computers.")
                 .define("fastLeaves", standard.fastLeaves());
-        MAX_FACES = b.comment("The most faces a single leaf block may be drawn from. The unmodded game draws 6 for every leaf block.",
-                              "6: no leaf block ever costs more than in the unmodded game, and most cost less.",
-                              "Higher: richer tips of the crown (a second leaf card, clumps that sit on a twig), for strong computers.")
+        MAX_FACES = b.comment("The most faces the leaves of a single leaf block may be drawn from. The unmodded game draws 6 for",
+                              "every leaf block.",
+                              "6: the leaves of no block ever cost more than in the unmodded game, and most cost less.",
+                              "Higher: richer tips of the crown (a second leaf card, clumps that sit on a stick), for strong computers.",
+                              "The small branches of bare trees are not leaves and are counted apart: see twigForks.")
                 .defineInRange("maxFaces", standard.maxFaces(), ShapeSettings.MIN_FACES, ShapeSettings.MAX_FACES);
-        WINTER_TWIGS = b.comment("Twigs on trees that have lost their leaves.",
-                                 "NONE: a bare tree shows its branches only.",
-                                 "NEAR: a twig wherever a leaf block touches a branch.",
+        WINTER_TWIGS = b.comment("Small branches on trees that have lost their leaves, in the bark of the tree: one main twig",
+                                 "that grows out of the wood, with thinner twigs that leave it (see twigForks).",
+                                 "NONE: a bare tree shows the branches of Dynamic Trees only.",
+                                 "NEAR: a small branch wherever a leaf block touches a branch.",
                                  "MORE: also on leaf blocks deeper in the crown (see twigDepth). A denser winter crown.",
-                                 "In spring the same twigs carry buds.")
+                                 "In spring the same small branches carry a bud, and then the first leaves.")
                 .defineEnum("winterTwigs", standard.winterTwigs());
+        TWIG_FORKS = b.comment("How many thinner twigs leave the main twig of a small branch, each in another direction.",
+                               "The main twig is drawn from 5 faces and every thinner twig from 4 more. With 3 that is 17 faces",
+                               "on every leaf block that touches a branch, all winter. Lower this if bare forests cost too many frames;",
+                               "0 leaves the main twig alone.")
+                .defineInRange("twigForks", standard.twigForks(), 0, MiniBranch.MAX_FORKS);
         b.pop();
 
         b.comment("The numbers the shapes are drawn by. A block has 16 pixels from one side to the other.")
@@ -124,12 +148,21 @@ public final class FoliageClientConfig {
                 .defineInRange("clumpSize", standard.clumpSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         TWIG_DEPTH = b.comment("winterTwigs = MORE: Dynamic Trees gives every leaf block a number for how well it is supplied,",
                                "1 at the far edge of the crown and higher toward the twig. A leaf block with this number",
-                               "or more gets a twig even if it touches no branch.")
+                               "or more gets a small branch even if it touches no wood. It grows out of the leaf block it",
+                               "hangs on to, and is thinner than one that grows out of wood.")
                 .defineInRange("twigDepth", standard.twigDepth(), ShapeSettings.MIN_DEPTH, ShapeSettings.MAX_DEPTH);
         FIRST_SIZE = b.comment("Spring: the size of the small clump of first leaves on a leaf block, in pixels.")
                 .defineInRange("firstSize", standard.firstSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         HALF_SIZE = b.comment("Spring: the size of the clump of half-grown leaves, in pixels. Not below firstSize.")
                 .defineInRange("halfSize", standard.halfSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
+        BUD_SIZE = b.comment("Spring: the size of the bud at the end of a small branch in the days before the first leaves,",
+                             "in pixels. 0: no buds. (1 and 2 are read as 3: a bud as thin as its twig could not be seen.)")
+                .defineInRange("budSize", standard.budSize(), 0, ShapeSettings.MAX_BUD);
+        FALL_SIZE = b.comment("Autumn: the size of the clump a leaf block shrinks to when most of its leaves are gone, in pixels.",
+                              "Not below lastSize.")
+                .defineInRange("fallSize", standard.fallSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
+        LAST_SIZE = b.comment("Autumn: the size of the small clump of last leaves before a leaf block is bare, in pixels.")
+                .defineInRange("lastSize", standard.lastSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         b.pop();
 
         FallSettings fall = FallSettings.DEFAULT;
@@ -148,6 +181,10 @@ public final class FoliageClientConfig {
         FALL_MOST = b.comment("How many leaves may be on their way at once. 200 cost about as much as light rain.",
                               "0: none, and nothing is looked at either, the same as fallingLeaves = false.")
                 .defineInRange("most", fall.most(), FallSettings.MIN_MOST, FallSettings.MAX_MOST);
+        FALL_BURST = b.comment("How many leaves a leaf block lets go in the moment it thins, shrinks or goes bare, so that the",
+                               "change is not a sudden swap. Only for leaf blocks within 'distance' that the player is looking",
+                               "toward, and never more leaves than 'most' allows. 0: none, and nothing is looked at for it.")
+                .defineInRange("burst", fall.burst(), FallSettings.MIN_BURST, FallSettings.MAX_BURST);
         b.pop();
 
         SPEC = b.build();
@@ -166,7 +203,8 @@ public final class FoliageClientConfig {
         }
         return new ShapeSettings(SHAPE.get(), FAST_LEAVES.get(), MAX_FACES.get(), TIP_SIDES.get(), CLUMP_SIDES.get(),
                 CARD_WIDTH.get(), CARD_HEIGHT.get(), TUFT_SIZE.get(), TIP_SIZE.get(), CLUMP_SIZE.get(),
-                WINTER_TWIGS.get(), TWIG_DEPTH.get(), FIRST_SIZE.get(), HALF_SIZE.get());
+                WINTER_TWIGS.get(), TWIG_DEPTH.get(), FIRST_SIZE.get(), HALF_SIZE.get(),
+                TWIG_FORKS.get(), BUD_SIZE.get(), FALL_SIZE.get(), LAST_SIZE.get());
     }
 
     /**
@@ -177,6 +215,6 @@ public final class FoliageClientConfig {
         if (!SPEC.isLoaded()) {
             return FallSettings.DEFAULT;
         }
-        return new FallSettings(FALLING_LEAVES.get(), FALL_AMOUNT.get(), FALL_DISTANCE.get(), FALL_MOST.get());
+        return new FallSettings(FALLING_LEAVES.get(), FALL_AMOUNT.get(), FALL_DISTANCE.get(), FALL_MOST.get(), FALL_BURST.get());
     }
 }
