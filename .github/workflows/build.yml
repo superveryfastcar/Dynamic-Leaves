@@ -1,0 +1,39 @@
+# Builds Dynamic Leaves and runs its game tests on a headless server for
+# every push and pull request. The jar is kept as a download of the run.
+#
+# The client self test needs a screen and Sodium, so it is not run here;
+# see "Testing" in the README for how to run it.
+name: Build and test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Minecraft 1.21.1 and NeoForge need Java 21.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+
+      # Caches Gradle and the NeoForge/Minecraft files between runs.
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Build
+        run: ./gradlew build --console=plain
+
+      # Runs every game test (the gametest package) on a server without a
+      # screen; the task fails if a required test fails.
+      - name: Game tests
+        run: ./gradlew runGameTestServer --console=plain
+
+      - name: Keep the jar
+        uses: actions/upload-artifact@v4
+        with:
+          name: dynamicleaves-jar
+          path: build/libs/dynamicleaves-*.jar
