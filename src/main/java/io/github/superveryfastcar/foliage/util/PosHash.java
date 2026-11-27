@@ -40,6 +40,43 @@ public final class PosHash {
     }
 
     /**
+     * A smooth pattern over the map: a number from 0 to 255 that changes
+     * gently from one block to the next and has no visible grid. The map is
+     * cut into square cells, each corner gets a fixed random number, and a
+     * place takes a mix of the four corners around it, weighted by an
+     * S-shaped curve so that the pattern has no creases at the cell edges.
+     *
+     * <p>Whole-number arithmetic only, so a server and every player's game
+     * get exactly the same pattern.</p>
+     *
+     * @param salt tells different patterns apart
+     * @param x    the block's x
+     * @param z    the block's z
+     * @param cell the width of a cell in blocks, at least 1; over about
+     *             this distance the pattern changes from one random value
+     *             to the next
+     * @return 0 to 255
+     */
+    public static int smooth(long salt, int x, int z, int cell) {
+        int cellX = Math.floorDiv(x, cell);
+        int cellZ = Math.floorDiv(z, cell);
+        int weightX = ease(Math.floorMod(x, cell) * 256 / cell);
+        int weightZ = ease(Math.floorMod(z, cell) * 256 / cell);
+        int a = bits(hash(salt, cellX, cellZ), 8);
+        int b = bits(hash(salt, cellX + 1, cellZ), 8);
+        int c = bits(hash(salt, cellX, cellZ + 1), 8);
+        int d = bits(hash(salt, cellX + 1, cellZ + 1), 8);
+        int near = a * (256 - weightX) + b * weightX;
+        int far = c * (256 - weightX) + d * weightX;
+        return (near * (256 - weightZ) + far * weightZ) >> 16;
+    }
+
+    /** An S-shaped curve from 0 to 256 over 0 to 256: slow at both ends, fastest in the middle. */
+    private static int ease(int t) {
+        return t * t * (768 - 2 * t) >> 16;
+    }
+
+    /**
      * The top bits of a hash as a whole number.
      *
      * @param hash  a hash from this class

@@ -5,12 +5,17 @@ import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.worldgen.JoCode;
 import com.mojang.blaze3d.platform.NativeImage;
 import io.github.superveryfastcar.foliage.Foliage;
-import io.github.superveryfastcar.foliage.client.SeasonsLink;
+import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
+import io.github.superveryfastcar.foliage.season.LeafCalendar;
+import io.github.superveryfastcar.foliage.season.LeafClock;
+import io.github.superveryfastcar.foliage.season.LeafStage;
+import io.github.superveryfastcar.foliage.shape.LeafPicture;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
+import io.github.superveryfastcar.foliage.shape.WinterTwigs;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -18,6 +23,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import javax.annotation.Nullable;
+import net.minecraft.client.CloudStatus;
 import net.minecraft.client.GraphicsStatus;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
@@ -29,12 +35,15 @@ import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.server.IntegratedServer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
+import net.minecraft.server.level.ServerLevel;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.Difficulty;
 import net.minecraft.world.level.GameRules;
 import net.minecraft.world.level.GameType;
 import net.minecraft.world.level.LevelSettings;
 import net.minecraft.world.level.WorldDataConfiguration;
+import net.minecraft.world.level.block.entity.BeehiveBlockEntity;
+import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.levelgen.WorldOptions;
 import net.minecraft.world.level.levelgen.presets.WorldPresets;
 import net.minecraft.world.level.storage.LevelStorageSource;
@@ -55,8 +64,10 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  * loads in a real client (with Sodium, if Sodium is in {@code run/mods}),
  * that the leaf models take the place of Dynamic Trees' own, that every
  * shape is really drawn, how many faces the chunk builder gets per leaf
- * block, and that the models step aside when they should. It saves
- * pictures of the same scene in every shape for a human to judge the
+ * block, and that the trees go through the year: thinner day by day at the
+ * end of autumn, bare with twigs in winter, in bud and then in leaf again
+ * at the start of spring. It saves pictures of the same scene in every
+ * shape and on every day of the two changes for a human to judge the
  * look.</p>
  *
  * <p>It does nothing unless the system property
@@ -70,10 +81,14 @@ import net.neoforged.neoforge.client.event.ClientTickEvent;
  *   <li>Plants a fixed scene with Dynamic Trees' own command: a big oak, a
  *       birch and a dark oak in front, rows of forest behind them, and one
  *       tree of every other kind off to the east.</li>
- *   <li>Works through its list of looks ({@link #SHOTS}). For each one it
- *       sets the look, has the landscape drawn again, waits until that is
- *       done, checks numbers, and saves a picture from each camera spot
- *       ({@link #VIEWS}) into the game's {@code screenshots} folder.</li>
+ *   <li>Works through its list of looks ({@link #SHOTS}): first every
+ *       shape in summer, then the year, day by day. For each one it sets
+ *       the date and the look, has the landscape drawn again, waits until
+ *       that is done, checks numbers, and saves a picture from some of the
+ *       camera spots ({@link #VIEWS}) into the game's {@code screenshots}
+ *       folder. Once, at the first day of winter, it does not ask for the
+ *       landscape to be drawn again and checks that this happens on its
+ *       own.</li>
  *   <li>Writes one line per check into the log, each starting with
  *       {@code [Foliage self test]}, and at the end a line with
  *       {@code RESULT:}. Then it closes the game.</li>
@@ -95,7 +110,13 @@ public final class DevSelfTest {
     private static final int SETTLE_TICKS = 160;
 
     /** Give up and close the game this long after entering the world, whatever happened. */
-    private static final long GIVE_UP_NANOS = 1_500_000_000_000L;
+    private static final long GIVE_UP_NANOS = 2_700_000_000_000L;
+
+    /**
+     * Client ticks to wait for the landscape to be drawn again on its own
+     * after the date changed: Seasons spreads that over 20 seconds.
+     */
+    private static final int GENTLE_REDRAW_TICKS = 520;
 
     /** One of the largest oaks Dynamic Trees knows, as its growth code. */
     private static final String BIG_OAK = "JOJxOOKPz+vnSx8nSR+beJnzzz89x98+txuJXvzePt6WJ9y98mOOJ67+SPkxJ+fy8";
@@ -111,9 +132,21 @@ public final class DevSelfTest {
     private static final List<View> VIEWS = List.of(
             new View("ground", "0.5 -60 6.5 180 -16"),
             new View("close", "5.5 -55 -5.5 144 -6"),
-            new View("under", "3.5 -60 -9.5 144 -52"),
             new View("above", "0.5 -44 12.5 180 22"),
+            new View("under", "3.5 -60 -9.5 144 -52"),
             new View("kinds", "56.5 -54 14.5 180 -8"));
+
+    /** What the leaf calendar does on the date of a look. */
+    private enum Time {
+        /** Between the two changes: every tree in full leaf. */
+        FULL,
+        /** The last days of autumn: leaves fall. */
+        FALL,
+        /** Winter: every tree that sheds is bare. */
+        BARE,
+        /** The first days of spring: leaves come back. */
+        RETURN
+    }
 
     /**
      * One look to check and photograph.
@@ -123,24 +156,79 @@ public final class DevSelfTest {
      * @param fancy    the game's own graphics setting: true for see-through
      *                 leaves ("fancy"), false for leaves that are not ("fast")
      * @param date     the calendar date to show it at
+     * @param time     what the leaf calendar does on that date
+     * @param views    from how many of the camera spots a picture is saved
+     *                 (the first ones of {@link #VIEWS})
+     * @param gentle   true: the landscape is not asked to be drawn again
+     *                 for this look; it has to happen on its own because
+     *                 the date changed
+     * @param tracked  true for the looks that make up the walk through the
+     *                 year (same shape, one date after another); the checks
+     *                 compare each with the one before
      */
-    private record Shot(String name, ShapeSettings settings, boolean fancy, String date) {
+    private record Shot(String name, ShapeSettings settings, boolean fancy, String date, Time time, int views,
+                        boolean gentle, boolean tracked) {
+
+        /** A look in summer, photographed from every camera spot. */
+        static Shot summer(String name, ShapeSettings settings, boolean fancy) {
+            return new Shot(name, settings, fancy, SUMMER, Time.FULL, VIEWS.size(), false, false);
+        }
+
+        /** A day of the walk through the year, in the mod's own shape. */
+        static Shot day(String date, Time time, int views) {
+            return new Shot(date.replace(' ', '-'), ShapeSettings.DEFAULT, true, date, time, views, false, true);
+        }
+
+        /** The same date in another look, beside the walk through the year. */
+        static Shot beside(String name, String date, Time time, ShapeSettings settings, boolean fancy) {
+            return new Shot(date.replace(' ', '-') + "-" + name, settings, fancy, date, time, 2, false, false);
+        }
     }
 
     private static final String SUMMER = "summer 7";
 
     private static final List<Shot> SHOTS = List.of(
-            new Shot("plain", ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true, SUMMER),
-            new Shot("shell", ShapeSettings.DEFAULT.withShape(LeafShape.SHELL), true, SUMMER),
-            new Shot("bushy", ShapeSettings.DEFAULT.withShape(LeafShape.BUSHY), true, SUMMER),
-            new Shot("tufts", ShapeSettings.DEFAULT.withShape(LeafShape.TUFTS), true, SUMMER),
-            new Shot("mixed", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED), true, SUMMER),
-            new Shot("mixed-rich", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED).withMaxFaces(ShapeSettings.MAX_FACES), true, SUMMER),
-            new Shot("bushy-rich", ShapeSettings.DEFAULT.withShape(LeafShape.BUSHY).withMaxFaces(ShapeSettings.MAX_FACES), true, SUMMER),
-            new Shot("tufts-rich", ShapeSettings.DEFAULT.withShape(LeafShape.TUFTS).withMaxFaces(ShapeSettings.MAX_FACES), true, SUMMER),
-            new Shot("mixed-fewest-faces", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED).withFastLeaves(true), true, SUMMER),
-            new Shot("mixed-fast-graphics", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED), false, SUMMER),
-            new Shot("mixed-late-autumn", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED), true, "autumn 13"));
+            // Every shape, in summer.
+            Shot.summer("plain", ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true),
+            Shot.summer("shell", ShapeSettings.DEFAULT.withShape(LeafShape.SHELL), true),
+            Shot.summer("bushy", ShapeSettings.DEFAULT.withShape(LeafShape.BUSHY), true),
+            Shot.summer("tufts", ShapeSettings.DEFAULT.withShape(LeafShape.TUFTS), true),
+            Shot.summer("mixed", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED), true),
+            Shot.summer("mixed-rich", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED).withMaxFaces(ShapeSettings.MAX_FACES), true),
+            Shot.summer("bushy-rich", ShapeSettings.DEFAULT.withShape(LeafShape.BUSHY).withMaxFaces(ShapeSettings.MAX_FACES), true),
+            Shot.summer("tufts-rich", ShapeSettings.DEFAULT.withShape(LeafShape.TUFTS).withMaxFaces(ShapeSettings.MAX_FACES), true),
+            Shot.summer("mixed-fewest-faces", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED).withFastLeaves(true), true),
+            Shot.summer("mixed-fast-graphics", ShapeSettings.DEFAULT.withShape(LeafShape.MIXED), false),
+            // The year. With the Calendar mod's 14-day seasons the leaves fall on days 8 to 14 of autumn.
+            Shot.day("autumn 7", Time.FULL, 2),
+            Shot.day("autumn 8", Time.FALL, 3),
+            Shot.day("autumn 9", Time.FALL, 3),
+            Shot.day("autumn 10", Time.FALL, 3),
+            Shot.day("autumn 11", Time.FALL, 3),
+            Shot.beside("plain", "autumn 11", Time.FALL, ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true),
+            Shot.beside("tufts", "autumn 11", Time.FALL, ShapeSettings.DEFAULT.withShape(LeafShape.TUFTS), true),
+            Shot.beside("fast-graphics", "autumn 11", Time.FALL, ShapeSettings.DEFAULT, false),
+            Shot.day("autumn 12", Time.FALL, 3),
+            Shot.day("autumn 13", Time.FALL, 3),
+            Shot.day("autumn 14", Time.FALL, 3),
+            // The first day of winter is reached without asking for a redraw: it has to come on its own.
+            new Shot("winter-1-on-its-own", ShapeSettings.DEFAULT, true, "winter 1", Time.BARE, 1, true, true),
+            Shot.day("winter 1", Time.BARE, VIEWS.size()),
+            Shot.beside("more-twigs", "winter 1", Time.BARE, ShapeSettings.DEFAULT.withWinterTwigs(WinterTwigs.MORE), true),
+            Shot.beside("no-twigs", "winter 1", Time.BARE, ShapeSettings.DEFAULT.withWinterTwigs(WinterTwigs.NONE), true),
+            Shot.beside("plain", "winter 1", Time.BARE, ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true),
+            Shot.beside("fast-graphics", "winter 1", Time.BARE, ShapeSettings.DEFAULT, false),
+            // The leaves come back on days 1 to 7 of spring.
+            Shot.day("spring 1", Time.RETURN, 3),
+            Shot.day("spring 2", Time.RETURN, 3),
+            Shot.day("spring 3", Time.RETURN, 3),
+            Shot.day("spring 4", Time.RETURN, 3),
+            Shot.beside("plain", "spring 4", Time.RETURN, ShapeSettings.DEFAULT.withShape(LeafShape.PLAIN), true),
+            Shot.beside("fast-graphics", "spring 4", Time.RETURN, ShapeSettings.DEFAULT, false),
+            Shot.day("spring 5", Time.RETURN, 3),
+            Shot.day("spring 6", Time.RETURN, 3),
+            Shot.day("spring 7", Time.RETURN, 3),
+            Shot.day("spring 8", Time.FULL, 3));
 
     /**
      * The most faces per leaf block a shape may hand to the chunk builder
@@ -187,6 +275,15 @@ public final class DevSelfTest {
     /** Faces per leaf block of the plain look, kept to compare the shapes with. */
     private static double plainFaces;
 
+    // The walk through the year: what the look before showed.
+    /** The share of the big oak's leaf blocks that were in full leaf, and that were bare; -1 before the first. */
+    private static double fullBefore = -1.0;
+    private static double bareBefore = -1.0;
+    /** The share of the "ground" picture that was open sky; -1 before the first. */
+    private static double skyBefore = -1.0;
+    /** The same share in summer, in the mod's own shape. */
+    private static double skyInSummer = -1.0;
+
     private DevSelfTest() {
     }
 
@@ -232,6 +329,8 @@ public final class DevSelfTest {
         if (ticksInWorld == 1) {
             enteredNanos = System.nanoTime();
             minecraft.options.graphicsMode().set(GraphicsStatus.FANCY);
+            // No clouds: they drift, and the checks measure how much sky shows through the crowns.
+            minecraft.options.cloudStatus().set(CloudStatus.OFF);
             minecraft.options.renderDistance().set(10);
             minecraft.options.fov().set(70);
             server.execute(() -> buildScene(server));
@@ -260,20 +359,28 @@ public final class DevSelfTest {
                     return;
                 }
                 Shot current = SHOTS.get(shot);
+                if (current.gentle()) {
+                    // Counted from before the date changes: what is built from here on, nobody asked for.
+                    LeafModels.setSettings(current.settings());
+                    run(server, "tp @a " + VIEWS.get(0).where());
+                    LeafModels.resetCounters();
+                }
                 if (!current.date().equals(lastDate)) {
                     lastDate = current.date();
-                    run(server, "calendar set " + current.date(), "time set 6000");
-                    wait = 80;
+                    run(server, "calendar set " + current.date(), "time set 6000", "kill @e[type=minecraft:bee]");
+                    wait = current.gentle() ? 80 + GENTLE_REDRAW_TICKS : 80;
                 }
                 phase = 1;
             }
             case 1 -> {
                 Shot current = SHOTS.get(shot);
-                LeafModels.setSettings(current.settings());
-                minecraft.options.graphicsMode().set(current.fancy() ? GraphicsStatus.FANCY : GraphicsStatus.FAST);
-                run(server, "tp @a " + VIEWS.get(0).where());
-                LeafModels.resetCounters();
-                minecraft.levelRenderer.allChanged();
+                if (!current.gentle()) {
+                    LeafModels.setSettings(current.settings());
+                    minecraft.options.graphicsMode().set(current.fancy() ? GraphicsStatus.FANCY : GraphicsStatus.FAST);
+                    run(server, "tp @a " + VIEWS.get(0).where());
+                    LeafModels.resetCounters();
+                    minecraft.levelRenderer.allChanged();
+                }
                 redrawStart = System.nanoTime();
                 quiet = 0;
                 wait = 20;
@@ -294,7 +401,7 @@ public final class DevSelfTest {
                 Screenshot.grab(minecraft.gameDirectory, name, minecraft.getMainRenderTarget(), message -> { });
                 log("saved " + name);
                 view++;
-                if (view >= VIEWS.size()) {
+                if (view >= current.views()) {
                     phase = 0;
                     wait = 2;
                 } else {
@@ -343,6 +450,36 @@ public final class DevSelfTest {
             x += 9;
         }
         log("planted 3 trees in front, " + planted + " behind and the other kinds to the east");
+        removeBees(server);
+    }
+
+    /**
+     * Takes the bee nests that Dynamic Trees hangs into oaks out of the
+     * scene, with their bees. A bee that flies past the camera changes how
+     * much sky a picture shows, and the pictures are compared by that.
+     */
+    private static void removeBees(IntegratedServer server) {
+        // Queued like the commands that plant the trees, so that it runs after them.
+        server.execute(() -> {
+            ServerLevel level = server.overworld();
+            int nests = 0;
+            for (int chunkX = -6; chunkX <= 7; chunkX++) {
+                for (int chunkZ = -7; chunkZ <= 2; chunkZ++) {
+                    LevelChunk chunk = level.getChunkSource().getChunkNow(chunkX, chunkZ);
+                    if (chunk == null) {
+                        continue;
+                    }
+                    for (BlockPos pos : List.copyOf(chunk.getBlockEntitiesPos())) {
+                        if (chunk.getBlockEntity(pos) instanceof BeehiveBlockEntity) {
+                            level.removeBlock(pos, false);
+                            nests++;
+                        }
+                    }
+                }
+            }
+            log("took " + nests + " bee nests out of the scene");
+        });
+        run(server, "kill @e[type=minecraft:bee]");
     }
 
     /**
@@ -396,17 +533,66 @@ public final class DevSelfTest {
                         cardShare > 0.38F * leafShare && cardShare < 0.58F * leafShare);
             }
         }
+        // The leaf pictures of the year, for the kinds that shed.
+        for (String kind : List.of("oak", "birch", "dark_oak")) {
+            ResourceLocation texture = ResourceLocation.withDefaultNamespace("block/" + kind + "_leaves");
+            float full = shownShare(atlas.getSprite(texture).contents().byMipLevel[0]);
+            float[] shares = new float[LeafPicture.COUNT];
+            float[] far = new float[LeafPicture.COUNT];
+            boolean allMade = true;
+            for (int number = 1; number < LeafPicture.COUNT; number++) {
+                ResourceLocation name = LeafPartsSource.leafName(texture, LeafPicture.byNumber(number));
+                TextureAtlasSprite sprite = atlas.getSprite(name);
+                if (!sprite.contents().name().equals(name)) {
+                    allMade = false;
+                    continue;
+                }
+                NativeImage[] sizes = sprite.contents().byMipLevel;
+                shares[number] = shownShare(sizes[0]);
+                // The copy a quarter as wide (4 by 4 for the usual textures): the
+                // ones smaller still have too few pixels to show a tenth of them.
+                far[number] = shownShare(sizes[Math.min(2, sizes.length - 1)]);
+            }
+            expect("the leaf pictures of the year were made for " + kind, allMade);
+            if (allMade) {
+                expect(String.format(Locale.ROOT, "%s loses its leaves picture by picture (full %.2f, then %.2f, %.2f, %.2f)", kind, full,
+                                shares[LeafPicture.THIN.ordinal()], shares[LeafPicture.THINNER.ordinal()], shares[LeafPicture.LAST.ordinal()]),
+                        shares[LeafPicture.THIN.ordinal()] < full && shares[LeafPicture.THINNER.ordinal()] < shares[LeafPicture.THIN.ordinal()]
+                                && shares[LeafPicture.LAST.ordinal()] < shares[LeafPicture.THINNER.ordinal()] && shares[LeafPicture.LAST.ordinal()] > 0.03F);
+                expect(String.format(Locale.ROOT, "%s grows them back picture by picture (%.2f, then %.2f)", kind,
+                                shares[LeafPicture.YOUNG.ordinal()], shares[LeafPicture.HALF.ordinal()]),
+                        shares[LeafPicture.YOUNG.ordinal()] < shares[LeafPicture.HALF.ordinal()] && shares[LeafPicture.HALF.ordinal()] < full);
+                // Seen from afar the game uses smaller copies of a picture; the few last leaves must not fade out of them.
+                expect(String.format(Locale.ROOT, "the last leaves of %s stay in the small copies of their picture (%.2f full size, %.2f a quarter as wide)",
+                                kind, shares[LeafPicture.LAST.ordinal()], far[LeafPicture.LAST.ordinal()]),
+                        far[LeafPicture.LAST.ordinal()] > 0.5F * shares[LeafPicture.LAST.ordinal()]);
+            }
+            for (LeafPicture which : List.of(LeafPicture.THIN, LeafPicture.THINNER)) {
+                ResourceLocation name = LeafPartsSource.cardName(texture, which);
+                expect("a thinned leaf card (" + which + ") was made for " + kind, atlas.getSprite(name).contents().name().equals(name));
+            }
+        }
         for (String twigs : List.of("twigs_brown", "twigs_birch", "twigs_dark")) {
             ResourceLocation name = ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/" + twigs + "_0");
             expect("the twig pictures " + twigs + " are loaded", atlas.getSprite(name).contents().name().equals(name));
+            ResourceLocation buds = LeafPartsSource.budTwigs(ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/" + twigs)).withSuffix("_0");
+            expect("and the same twigs with buds", atlas.getSprite(buds).contents().name().equals(buds));
         }
         int leaves = 0;
+        boolean ours = true;
+        boolean onSeasons = false;
         for (BlockPos pos : BlockPos.betweenClosed(OAK_FROM, OAK_TO)) {
             if (minecraft.level.getBlockState(pos).getBlock() instanceof DynamicLeavesBlock) {
                 leaves++;
+                ours &= LeafModels.drawsAt(minecraft.level, pos);
+                onSeasons |= LeafModels.onSeasonsModelAt(minecraft.level, pos);
             }
         }
         expect("the big oak stands (" + leaves + " leaf blocks)", leaves > 300);
+        expect("every leaf block of the big oak is drawn by a leaf model of Foliage", ours);
+        expect("Seasons' own bare-tree look is out of the way for them", !onSeasons);
+        expect("the world's rules of the leaf calendar arrived from the server", LeafCalendar.hasSentSettings());
+        expect("the leaf clock runs", ClientLeafClock.clock() != null);
     }
 
     /** The share of a picture's pixels that are shown (at least half opaque). */
@@ -427,23 +613,31 @@ public final class DevSelfTest {
         ClientLevel level = minecraft.level;
         String name = current.name();
         boolean plain = current.settings().shape() == LeafShape.PLAIN;
-        boolean autumn = !current.date().equals(SUMMER);
-        boolean steppedAside = plain || autumn;
+        Time time = current.time();
+
+        // The leaf clock of the player's game knows what time of year it is.
+        LeafClock clock = ClientLeafClock.clock();
+        expect(name + ": the leaf clock is at the right time of year (" + clock + ")", clock != null
+                && clock.allFull() == (time == Time.FULL) && clock.allBare() == (time == Time.BARE));
 
         // What the chunk builder was handed, over everything it built.
         long[] counted = LeafModels.counters();
         double faces = counted[1] / (double) Math.max(1, counted[0]);
         double slanted = counted[2] / (double) Math.max(1, counted[0]);
-        log(String.format(Locale.ROOT, "%s at %s: redrawn in about %.1f s; leaf blocks %d, faces %d, faces per leaf block %.2f, slanted %.2f; recipes kept %d; %s",
-                name, current.date(), (System.nanoTime() - redrawStart) / 1.0e9 - 1.5, counted[0], counted[1], faces, slanted,
-                LeafModels.recipeCount(), sodiumCounters()));
-        expect(name + ": the chunk builder drew leaf blocks (" + counted[0] + ")", counted[0] > 2000);
+        log(String.format(Locale.ROOT, "%s at %s: leaf blocks %d, faces %d, faces per leaf block %.2f, slanted %.2f; recipes kept %d; %s",
+                name, current.date(), counted[0], counted[1], faces, slanted, LeafModels.recipeCount(), sodiumCounters()));
+        if (current.gentle()) {
+            expect(name + ": after the date changed, the landscape was drawn again on its own (" + counted[0] + " leaf blocks)", counted[0] > 15000);
+        } else {
+            expect(name + ": the chunk builder drew leaf blocks (" + counted[0] + ")", counted[0] > 2000);
+        }
 
         // The big oak, leaf block by leaf block: the model hands out what its recipe says.
         int oakLeaves = 0;
         int ours = 0;
         int agree = 0;
         long oakFaces = 0;
+        int[] stages = new int[LeafStage.values().length];
         for (BlockPos pos : BlockPos.betweenClosed(OAK_FROM, OAK_TO)) {
             if (!(level.getBlockState(pos).getBlock() instanceof DynamicLeavesBlock)) {
                 continue;
@@ -452,37 +646,115 @@ public final class DevSelfTest {
             int recipe = LeafModels.recipeAt(level, pos);
             int handedOut = LeafModels.faceCountAt(level, pos);
             oakFaces += Math.max(0, handedOut);
-            if (recipe >= 0) {
+            if (recipe != Recipe.NONE) {
                 ours++;
                 agree += handedOut == Recipe.quadCount(recipe) ? 1 : 0;
+                stages[Recipe.stage(recipe).ordinal()]++;
             } else {
                 agree += handedOut == 6 ? 1 : 0;
+                stages[LeafStage.FULL.ordinal()]++;
             }
         }
         double perOakLeaf = oakFaces / (double) Math.max(1, oakLeaves);
-        log(String.format(Locale.ROOT, "%s: the big oak has %d leaf blocks, %.2f faces each", name, oakLeaves, perOakLeaf));
-
-        if (steppedAside) {
-            expect(name + ": the leaf models step aside" + (autumn ? " while Seasons thins the leaves" : ""), ours == 0);
-            expect(name + ": every leaf block of the big oak is the plain cube (" + agree + " of " + oakLeaves + ")", agree == oakLeaves);
-            expect(name + ": nothing drawn at a slant", counted[2] == 0);
-            if (autumn) {
-                expect(name + ": Seasons thins the leaves", SeasonsLink.thinning());
+        StringBuilder stageReport = new StringBuilder();
+        for (LeafStage stage : LeafStage.values()) {
+            if (stages[stage.ordinal()] > 0) {
+                stageReport.append(' ').append(stage.name().toLowerCase(Locale.ROOT)).append(' ').append(stages[stage.ordinal()]);
             }
-        } else {
+        }
+        log(String.format(Locale.ROOT, "%s: the big oak has %d leaf blocks, %.2f faces each; by stage:%s", name, oakLeaves, perOakLeaf, stageReport));
+        double full = stages[LeafStage.FULL.ordinal()] / (double) Math.max(1, oakLeaves);
+        double bare = stages[LeafStage.BARE.ordinal()] / (double) Math.max(1, oakLeaves);
+
+        expect(name + ": the model hands out exactly the faces of the recipe (" + agree + " of " + oakLeaves + ")", agree == oakLeaves);
+        if (plain && time == Time.FULL) {
+            expect(name + ": in full leaf the plain look is left to the model the leaves had before", ours == 0);
+        } else if (!plain) {
             expect(name + ": every leaf block of the big oak is drawn by a recipe", ours == oakLeaves);
-            expect(name + ": the model hands out exactly the faces of the recipe (" + agree + " of " + oakLeaves + ")", agree == oakLeaves);
-            expect(name + ": no thinning by Seasons in summer", !SeasonsLink.thinning());
+        }
+        switch (time) {
+            case FULL -> expect(name + ": every leaf block of the big oak is in full leaf", full == 1.0);
+            case BARE -> expect(name + ": every leaf block of the big oak is bare", bare == 1.0);
+            case FALL -> expect(name + ": the big oak shows only stages of autumn", stages[LeafStage.BUDS.ordinal()]
+                    + stages[LeafStage.FIRST.ordinal()] + stages[LeafStage.HALF.ordinal()] == 0);
+            case RETURN -> expect(name + ": the big oak shows only stages of spring", stages[LeafStage.THIN.ordinal()]
+                    + stages[LeafStage.THINNER.ordinal()] + stages[LeafStage.LAST.ordinal()] == 0);
+            default -> { }
         }
 
-        if (plain) {
+        if (time == Time.FULL && !current.tracked()) {
+            checkSummerShot(minecraft, current, counted, faces, slanted);
+            return;
+        }
+
+        // A day of the year: never more faces than the unmodded game, far fewer in winter.
+        boolean rich = current.settings().maxFaces() > ShapeSettings.DEFAULT.maxFaces();
+        if (!rich) {
+            expect(String.format(Locale.ROOT, "%s: at most 6 faces per leaf block (%.2f)", name, faces), faces <= 6.0);
+        }
+        if (!current.fancy()) {
+            expect(String.format(Locale.ROOT, "%s: only outer faces are drawn (%.2f per leaf block, none at a slant)", name, faces),
+                    faces < 3.5 && counted[2] == 0);
+        } else if (time == Time.BARE) {
+            expect(String.format(Locale.ROOT, "%s: bare trees need few faces (%.2f per leaf block)", name, faces), faces < 2.0);
+            if (current.settings().winterTwigs() == WinterTwigs.NONE) {
+                // The other kinds of trees keep their leaves and their cards; the big oak has nothing left.
+                expect(name + ": without twigs the big oak draws nothing", oakFaces == 0);
+            } else {
+                expect(String.format(Locale.ROOT, "%s: the big oak shows twigs (%.2f faces per leaf block)", name, perOakLeaf), oakFaces > 0 && perOakLeaf < 2.0);
+            }
+        }
+
+        // The picture: how much open sky shows.
+        int[] now = picture(minecraft);
+        double sky = skyShare(now);
+        log(String.format(Locale.ROOT, "%s: open sky covers %.1f %% of the picture; of the big oak %.0f %% in full leaf, %.0f %% bare", name,
+                100 * sky, 100 * full, 100 * bare));
+        if (!current.tracked()) {
+            return;
+        }
+        // The walk through the year: each day against the day before.
+        if (time == Time.FULL && skyInSummer < 0) {
+            skyInSummer = sky;
+        }
+        if (fullBefore >= 0) {
+            switch (time) {
+                case FALL -> {
+                    expect(String.format(Locale.ROOT, "%s: the big oak has no more leaves than the day before (in full leaf %.2f after %.2f, bare %.2f after %.2f)",
+                            name, full, fullBefore, bare, bareBefore), full <= fullBefore && bare >= bareBefore);
+                    expect(String.format(Locale.ROOT, "%s: no less sky shows than the day before (%.3f after %.3f)", name, sky, skyBefore), sky >= skyBefore - 0.004);
+                }
+                case BARE -> {
+                    expect(String.format(Locale.ROOT, "%s: much more sky shows than in summer (%.3f against %.3f)", name, sky, skyInSummer), sky > skyInSummer + 0.03);
+                    if (!current.gentle() && bareBefore == 1.0) {
+                        // The look before this one was the same day, drawn again on its own.
+                        expect(String.format(Locale.ROOT, "%s: drawn again on request, the picture shows the same sky as drawn on its own (%.3f and %.3f)",
+                                name, sky, skyBefore), Math.abs(sky - skyBefore) < 0.003);
+                    }
+                }
+                case RETURN -> {
+                    expect(String.format(Locale.ROOT, "%s: the big oak has no fewer leaves than the day before (in full leaf %.2f after %.2f, bare %.2f after %.2f)",
+                            name, full, fullBefore, bare, bareBefore), full >= fullBefore && bare <= bareBefore);
+                    expect(String.format(Locale.ROOT, "%s: no more sky shows than the day before (%.3f after %.3f)", name, sky, skyBefore), sky <= skyBefore + 0.004);
+                }
+                case FULL -> expect(String.format(Locale.ROOT, "%s: as much sky shows as in summer (%.3f against %.3f)", name, sky, skyInSummer),
+                        Math.abs(sky - skyInSummer) < 0.02);
+                default -> { }
+            }
+        }
+        fullBefore = full;
+        bareBefore = bare;
+        skyBefore = sky;
+    }
+
+    /** The checks of a shape in summer: its face counts, and its picture against the plain look. */
+    private static void checkSummerShot(Minecraft minecraft, Shot current, long[] counted, double faces, double slanted) {
+        String name = current.name();
+        if (current.settings().shape() == LeafShape.PLAIN) {
             plainFaces = faces;
             plainPicture = picture(minecraft);
             expect(String.format(Locale.ROOT, "plain: about 6 faces per leaf block (%.2f)", faces), faces > 5.0 && faces <= 6.0);
-            return;
-        }
-        if (autumn) {
-            expect(String.format(Locale.ROOT, "%s: about 6 faces per leaf block (%.2f)", name, faces), faces > 5.0 && faces <= 6.0);
+            expect(name + ": nothing drawn at a slant", counted[2] == 0);
             return;
         }
         if (!current.fancy()) {
@@ -517,11 +789,27 @@ public final class DevSelfTest {
             double changedShare = changed / (double) now.length;
             double leafyBefore = leafyShare(plainPicture);
             double leafyNow = leafyShare(now);
-            log(String.format(Locale.ROOT, "%s: %.1f %% of the picture differs from plain; leaf green covers %.1f %% (plain %.1f %%)",
-                    name, 100 * changedShare, 100 * leafyNow, 100 * leafyBefore));
+            log(String.format(Locale.ROOT, "%s: %.1f %% of the picture differs from plain; leaf green covers %.1f %% (plain %.1f %%); open sky %.1f %%",
+                    name, 100 * changedShare, 100 * leafyNow, 100 * leafyBefore, 100 * skyShare(now)));
             expect(name + ": the picture differs from the plain look", changedShare > 0.02);
             expect(name + ": the crowns are about as full as in the plain look", leafyNow > 0.7 * leafyBefore && leafyNow < 1.4 * leafyBefore);
         }
+    }
+
+    /**
+     * The share of a picture's pixels that are open sky: clearly blue, and
+     * bluer than anything else in the scene. It does not depend on the
+     * color of the leaves, which changes with the season.
+     */
+    private static double skyShare(int[] pixels) {
+        int sky = 0;
+        for (int pixel : pixels) {
+            int red = pixel & 0xFF;
+            int green = pixel >> 8 & 0xFF;
+            int blue = pixel >> 16 & 0xFF;
+            sky += blue >= 170 && blue >= green + 20 && green >= red + 8 ? 1 : 0;
+        }
+        return sky / (double) pixels.length;
     }
 
     /**

@@ -23,13 +23,21 @@ import net.minecraft.world.level.block.state.BlockState;
  *   <li>bits 9 to 11: the side toward the heart of the leaf cluster (a leaf
  *       block that sits deeper in the crown), packed the same way;</li>
  *   <li>bit 12: something that is not a leaf and not a full block rests on
- *       top, for example a layer of snow.</li>
+ *       top, for example a layer of snow;</li>
+ *   <li>bit 13: the block is sheltered: each of its six neighbors is a
+ *       leaf block or a full, solid block, so it sits inside its crown
+ *       whatever the season.</li>
  * </ul>
  *
  * <h2>Open and covered</h2>
  * A side is covered when the neighbor there is a leaf block or a full,
  * solid block. Then nothing of this block can be seen from that side, and
  * no face is drawn toward it. Every other side is open.
+ *
+ * <p>While leaves fall or come back, a neighboring leaf block may show few
+ * leaves or none. The caller then passes a {@link LeafCover} that knows
+ * the neighbor's look, and a side toward a leaf block that does not cover
+ * counts as open.</p>
  *
  * <h2>Deeper in the crown</h2>
  * Dynamic Trees keeps for every leaf block how well it is supplied from
@@ -45,8 +53,29 @@ public final class Surround {
     private static final int WOOD_SHIFT = 6;
     private static final int HEART_SHIFT = 9;
     private static final int LOADED_BIT = 1 << 12;
+    private static final int SHELTERED_BIT = 1 << 13;
 
     private static final Direction[] DIRECTIONS = Direction.values();
+
+    /**
+     * Says whether a neighboring leaf block hides what lies behind it.
+     * Asked once per leaf block next to the one that is being read.
+     */
+    @FunctionalInterface
+    public interface LeafCover {
+
+        /**
+         * @param state the neighboring leaf block
+         * @param x     its position
+         * @param y     its position
+         * @param z     its position
+         * @return true if nothing can be seen through it
+         */
+        boolean covers(BlockState state, int x, int y, int z);
+    }
+
+    /** For the plain look of the unmodded game, where leaf blocks draw their faces toward each other: no leaf block covers. */
+    public static final LeafCover NO_LEAF_COVERS = (state, x, y, z) -> false;
 
     private Surround() {
     }
@@ -76,18 +105,36 @@ public final class Surround {
      * @return the packed surroundings, see the class notes
      */
     public static int read(BlockGetter level, BlockPos pos, BlockState state, BlockPos.MutableBlockPos near) {
+        return read(level, pos, state, near, null);
+    }
+
+    /**
+     * Looks at the six neighbors of a leaf block at a time of the year
+     * when leaf blocks may show few leaves or none.
+     *
+     * @param level the blocks around (a chunk being built, or a world)
+     * @param pos   the leaf block
+     * @param state the leaf block's state
+     * @param near  a position holder to work with; what it held is lost
+     * @param cover says for each neighboring leaf block whether it covers
+     *              the side toward it; null if all leaf blocks do
+     * @return the packed surroundings, see the class notes
+     */
+    public static int read(BlockGetter level, BlockPos pos, BlockState state, BlockPos.MutableBlockPos near,
+                           @Nullable LeafCover cover) {
         int ownDepth = depth(state);
         int deepest = ownDepth;
         int open = 0;
         int wood = 0;
         int heart = 0;
         boolean loaded = false;
+        boolean sheltered = true;
         for (Direction direction : DIRECTIONS) {
             near.setWithOffset(pos, direction);
             BlockState other = level.getBlockState(near);
             boolean covered;
             if (other.getBlock() instanceof LeavesBlock) {
-                covered = true;
+                covered = cover == null || cover.covers(other, near.getX(), near.getY(), near.getZ());
                 int depth = depth(other);
                 if (depth > deepest) {
                     deepest = depth;
@@ -95,6 +142,7 @@ public final class Surround {
                 }
             } else {
                 covered = other.isSolidRender(level, near);
+                sheltered &= covered;
                 if (wood == 0 && TreeHelper.isBranch(other)) {
                     wood = 1 + direction.ordinal();
                 }
@@ -106,7 +154,7 @@ public final class Surround {
                 open |= 1 << direction.ordinal();
             }
         }
-        return open | wood << WOOD_SHIFT | heart << HEART_SHIFT | (loaded ? LOADED_BIT : 0);
+        return open | wood << WOOD_SHIFT | heart << HEART_SHIFT | (loaded ? LOADED_BIT : 0) | (sheltered ? SHELTERED_BIT : 0);
     }
 
     /**
@@ -122,6 +170,25 @@ public final class Surround {
                 | (wood == null ? 0 : 1 + wood.ordinal()) << WOOD_SHIFT
                 | (heart == null ? 0 : 1 + heart.ordinal()) << HEART_SHIFT
                 | (loaded ? LOADED_BIT : 0);
+    }
+
+    /**
+     * The same surroundings, marked as sheltered: every neighbor is a leaf
+     * block or a full block. For tests.
+     */
+    public static int sheltered(int surround, boolean sheltered) {
+        return sheltered ? surround | SHELTERED_BIT : surround & ~SHELTERED_BIT;
+    }
+
+    /**
+     * Whether the block sits inside its crown: each of its six neighbors
+     * is a leaf block or a full, solid block. In full leaf such a block is
+     * buried and shows nothing. While leaves fall or come back it can be
+     * seen through its neighbors, but only from afar and in part, so it is
+     * drawn from fewer pieces.
+     */
+    public static boolean sheltered(int surround) {
+        return (surround & SHELTERED_BIT) != 0;
     }
 
     /** The open sides, one bit per direction. */
@@ -197,8 +264,12 @@ public final class Surround {
         return from == null ? Direction.UP : from.getOpposite();
     }
 
-    /** How deep in the crown a leaf block sits, from its {@code distance} number; 1 for blocks without one. */
-    private static int depth(BlockState state) {
+    /**
+     * How deep in the crown a leaf block sits: the supply number Dynamic
+     * Trees keeps in the block's {@code distance}, 1 at the far edge of
+     * the crown and higher toward the twig; 1 for blocks without one.
+     */
+    public static int depth(BlockState state) {
         return state.hasProperty(LeavesBlock.DISTANCE) ? state.getValue(LeavesBlock.DISTANCE) : 1;
     }
 }

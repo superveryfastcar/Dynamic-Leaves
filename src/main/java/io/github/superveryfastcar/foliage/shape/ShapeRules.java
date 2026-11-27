@@ -1,17 +1,27 @@
 package io.github.superveryfastcar.foliage.shape;
 
+import io.github.superveryfastcar.foliage.season.LeafStage;
 import io.github.superveryfastcar.foliage.util.PosHash;
+import javax.annotation.Nullable;
 import net.minecraft.core.Direction;
 
 /**
- * Decides which pieces a leaf block is drawn from, given its surroundings
- * and the shape the player chose. Plain arithmetic on whole numbers: the
- * same inputs always give the same {@link Recipe}.
+ * Decides which pieces a leaf block is drawn from, given its surroundings,
+ * the shape the player chose and the stage of the leaf calendar the block
+ * is at. Plain arithmetic on whole numbers: the same inputs always give the
+ * same {@link Recipe}.
  *
- * <h2>The rules</h2>
+ * <h2>The rules in leaf</h2>
+ * For a block in full leaf, and in the first two stages of autumn (the
+ * same pieces, with thinned leaf pictures):
  * <ul>
  *   <li>A leaf block with no open side is buried in the crown and shows
- *       nothing, in every shape.</li>
+ *       nothing, in every shape and at every stage.</li>
+ *   <li><b>Plain</b>: the outer faces of the cube and nothing else, at
+ *       every stage that has leaves; only the leaf picture changes through
+ *       the year. Leaf blocks do not hide each other's faces in this shape,
+ *       as in the unmodded game. (In full leaf a plain block is not drawn
+ *       from a recipe at all, but by the model it had before.)</li>
  *   <li><b>Shell</b>: outer faces on the open sides, and an inner plane
  *       behind each pair of sides of which at least one is open.</li>
  *   <li><b>Bushy</b>: outer faces, one card, one inner plane, and a second
@@ -44,6 +54,38 @@ import net.minecraft.core.Direction;
  * the far side like antlers.) A leaf block that touches nothing is never
  * made a clump, and neither is one with something resting on top (a layer
  * of snow), because the snow would hang in the air.
+ *
+ * <h2>The rules through the year</h2>
+ * For every shape but plain:
+ * <ul>
+ *   <li><b>Last leaves</b> (the end of a spot's autumn): no outer faces any
+ *       more. A spot with a twig ({@link #twigSpot}) shows the twig and one
+ *       plane of last leaves along it; any other spot two upright planes.</li>
+ *   <li><b>Bare</b>: the twig on a spot with a twig, nothing elsewhere.</li>
+ *   <li><b>Buds</b>: as bare; the twig carries buds.</li>
+ *   <li><b>First leaves</b>: a spot with a twig shows the budding twig and
+ *       one plane of young leaves along it. Any other spot shows a small
+ *       clump of young leaves against the side it hangs on to
+ *       ({@link ShapeSettings#firstSize}), or two upright planes if it has
+ *       no such side or carries snow.</li>
+ *   <li><b>Half grown</b>: a larger clump against the side the block hangs
+ *       on to ({@link ShapeSettings#halfSize}); without such a side, outer
+ *       faces and inner planes.</li>
+ * </ul>
+ * A clump of spring is never larger than the clump the spot will be in
+ * full leaf. None of these needs more than six faces, so the limit on
+ * faces always holds.
+ *
+ * <h2>Inside the crown</h2>
+ * A block whose six neighbors are all leaf blocks or full blocks
+ * ({@link Surround#sheltered}) is buried in summer and costs nothing. While
+ * leaves fall or come back, its neighbors show few leaves and it can be
+ * seen between them, but never close up and never whole. So it is drawn
+ * from fewer pieces than a block at the edge: outer faces only while it is
+ * in leaf (no planes, cards or clump), one upright plane for its last or
+ * first leaves, two for half-grown ones. Without this, a crown that is
+ * losing or growing its leaves would need the most faces of the whole year
+ * for blocks that are hardly seen.
  */
 public final class ShapeRules {
 
@@ -75,36 +117,116 @@ public final class ShapeRules {
     }
 
     /**
-     * The recipe of one leaf block.
+     * Whether a twig is drawn on a leaf spot when it is bare (and with
+     * buds, and under the last and first leaves).
      *
-     * @param settings the shape and its numbers; the shape must not be
-     *                 {@link LeafShape#PLAIN} (plain leaves are not drawn
-     *                 from a recipe at all)
+     * @param settings the player's choice ({@link ShapeSettings#winterTwigs})
+     * @param surround what stands around the block ({@link Surround})
+     * @param depth    the block's supply number of Dynamic Trees ({@link Surround#depth})
+     */
+    public static boolean twigSpot(ShapeSettings settings, int surround, int depth) {
+        switch (settings.winterTwigs()) {
+            case NEAR:
+                return Surround.wood(surround) != null;
+            case MORE:
+                return Surround.wood(surround) != null || depth >= settings.twigDepth();
+            case NONE:
+            default:
+                return false;
+        }
+    }
+
+    /**
+     * The recipe of one leaf block in full leaf.
+     *
+     * @param settings the shape and its numbers
      * @param surround what stands around the block ({@link Surround})
      * @param variant  the position's variant, 0 to 15
      * @return the recipe
      */
     public static int recipe(ShapeSettings settings, int surround, int variant) {
+        return recipe(settings, surround, variant, LeafStage.FULL, false);
+    }
+
+    /**
+     * The recipe of one leaf block.
+     *
+     * @param settings the shape and its numbers
+     * @param surround what stands around the block ({@link Surround}); at a
+     *                 time of the year when leaf blocks may look bare, read
+     *                 with their looks in mind
+     * @param variant  the position's variant, 0 to 15
+     * @param stage    the stage of the leaf calendar the block is at
+     * @param twigSpot whether the spot has a twig ({@link #twigSpot}); only
+     *                 looked at in the stages that draw one
+     * @return the recipe
+     */
+    public static int recipe(ShapeSettings settings, int surround, int variant, LeafStage stage, boolean twigSpot) {
         int open = Surround.open(surround);
-        int recipe = Recipe.start(open, variant);
+        int recipe = Recipe.withStage(Recipe.start(open, variant), stage);
         if (open == 0) {
             return recipe;
         }
+        if (settings.shape() == LeafShape.PLAIN) {
+            if (stage.leafless()) {
+                return twigSpot ? Recipe.withTwig(recipe, Surround.grow(surround)) : recipe;
+            }
+            return recipe | Recipe.FACES_BIT;
+        }
+        Direction support = Surround.loaded(surround) ? null : Surround.support(surround);
+        boolean sheltered = Surround.sheltered(surround);
+        switch (stage) {
+            case LAST:
+                if (twigSpot) {
+                    return twigAndPlane(recipe, surround, variant);
+                }
+                return sheltered ? recipe | uprightPlane(variant) : recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+            case BARE:
+            case BUDS:
+                return twigSpot ? Recipe.withTwig(recipe, Surround.grow(surround)) : recipe;
+            case FIRST:
+                if (twigSpot) {
+                    return twigAndPlane(recipe, surround, variant);
+                }
+                if (sheltered) {
+                    return recipe | uprightPlane(variant);
+                }
+                if (support != null) {
+                    return Recipe.withClump(recipe, springClump(settings, open, settings.firstSize()), support);
+                }
+                return recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+            case HALF:
+                if (sheltered) {
+                    return recipe | Recipe.PLANE_X | Recipe.PLANE_Z;
+                }
+                if (support != null) {
+                    return Recipe.withClump(recipe, springClump(settings, open, settings.halfSize()), support);
+                }
+                return shell(recipe, open, variant, settings.maxFaces(), 3);
+            case FULL:
+            case THIN:
+            case THINNER:
+            default:
+                return sheltered ? recipe | Recipe.FACES_BIT : inLeaf(settings, recipe, open, variant, support);
+        }
+    }
+
+    /** The pieces of a block in leaf: the rules of the shapes. */
+    private static int inLeaf(ShapeSettings settings, int recipe, int open, int variant, @Nullable Direction support) {
         if (settings.fastLeaves()) {
             return shell(recipe, open, variant, settings.maxFaces(), 1);
         }
         int openCount = Integer.bitCount(open);
-        Direction support = Surround.loaded(surround) ? null : Surround.support(surround);
+        int size = support == null ? 0 : leafClump(settings, openCount);
         switch (settings.shape()) {
             case TUFTS:
-                if (openCount >= settings.tipSides() && support != null) {
-                    boolean outermost = openCount >= settings.clumpSides();
-                    return clump(recipe, open, outermost ? settings.tipSize() : settings.tuftSize(), support, outermost, settings.maxFaces());
+                if (size != 0) {
+                    return clump(recipe, open, size, support, openCount >= settings.clumpSides(), settings.maxFaces());
                 }
                 return shell(recipe, open, variant, settings.maxFaces(), 3);
             case MIXED:
-                if (openCount >= settings.clumpSides() && support != null) {
-                    return clump(recipe, open, settings.clumpSize(), support, true, settings.maxFaces());
+                if (size != 0) {
+                    return clump(recipe, open, size, support, true, settings.maxFaces());
                 }
                 return bushy(recipe, open, openCount, variant, settings);
             case BUSHY:
@@ -113,6 +235,66 @@ public final class ShapeRules {
             default:
                 return shell(recipe, open, variant, settings.maxFaces(), 3);
         }
+    }
+
+    /**
+     * The side of the clump a block with a side to hang on to is drawn as
+     * in full leaf, or 0 if it is drawn as a whole block.
+     *
+     * @param openCount how many of its sides are open
+     */
+    private static int leafClump(ShapeSettings settings, int openCount) {
+        if (settings.fastLeaves()) {
+            return 0;
+        }
+        switch (settings.shape()) {
+            case TUFTS:
+                if (openCount >= settings.clumpSides()) {
+                    return settings.tipSize();
+                }
+                return openCount >= settings.tipSides() ? settings.tuftSize() : 0;
+            case MIXED:
+                return openCount >= settings.clumpSides() ? settings.clumpSize() : 0;
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * The side of a clump of spring: the size wanted, but not larger than
+     * the clump the spot is in full leaf (a spot must not shrink when its
+     * leaves are grown).
+     */
+    private static int springClump(ShapeSettings settings, int open, int wanted) {
+        int grown = leafClump(settings, Integer.bitCount(open));
+        return grown == 0 ? wanted : Math.min(wanted, grown);
+    }
+
+    /** One of the two upright inner planes, picked by the position's variant. */
+    private static int uprightPlane(int variant) {
+        return (variant & 1) == 0 ? Recipe.PLANE_X : Recipe.PLANE_Z;
+    }
+
+    /**
+     * A twig in the direction the block grows in, and one inner plane that
+     * the twig lies in, so that the plane's leaves hang along the twig.
+     */
+    private static int twigAndPlane(int recipe, int surround, int variant) {
+        Direction grow = Surround.grow(surround);
+        int plane;
+        switch (grow.getAxis()) {
+            case X:
+                plane = Recipe.PLANE_Z;
+                break;
+            case Z:
+                plane = Recipe.PLANE_X;
+                break;
+            case Y:
+            default:
+                plane = uprightPlane(variant);
+                break;
+        }
+        return Recipe.withTwig(recipe | plane, grow);
     }
 
     /**

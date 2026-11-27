@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.client;
 
 import io.github.superveryfastcar.foliage.shape.LeafShape;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
+import io.github.superveryfastcar.foliage.shape.WinterTwigs;
 import net.neoforged.neoforge.common.ModConfigSpec;
 
 /**
@@ -10,7 +11,9 @@ import net.neoforged.neoforge.common.ModConfigSpec;
  * leaves are drawn for this player only.
  *
  * <p>Every number the leaf shapes are drawn by is a setting here. The
- * values the mod ships with are those of {@link ShapeSettings#DEFAULT}.</p>
+ * values the mod ships with are those of {@link ShapeSettings#DEFAULT}.
+ * When the leaves fall and come back is not a player's setting but a rule
+ * of the world ({@link io.github.superveryfastcar.foliage.FoliageConfig}).</p>
  */
 public final class FoliageClientConfig {
 
@@ -47,6 +50,18 @@ public final class FoliageClientConfig {
     /** The size of an outermost tip's clump in the "mixed" shape. */
     public static final ModConfigSpec.IntValue CLUMP_SIZE;
 
+    /** On which leaf spots of a bare tree a twig is drawn. */
+    public static final ModConfigSpec.EnumValue<WinterTwigs> WINTER_TWIGS;
+
+    /** With "more twigs": from which depth in the crown a leaf spot gets a twig. */
+    public static final ModConfigSpec.IntValue TWIG_DEPTH;
+
+    /** The size of the clump of first leaves in spring. */
+    public static final ModConfigSpec.IntValue FIRST_SIZE;
+
+    /** The size of the clump of half-grown leaves in spring. */
+    public static final ModConfigSpec.IntValue HALF_SIZE;
+
     static {
         ShapeSettings standard = ShapeSettings.DEFAULT;
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -68,6 +83,12 @@ public final class FoliageClientConfig {
                               "6: no leaf block ever costs more than in the unmodded game, and most cost less.",
                               "Higher: richer tips of the crown (a second leaf card, clumps that sit on a twig), for strong computers.")
                 .defineInRange("maxFaces", standard.maxFaces(), ShapeSettings.MIN_FACES, ShapeSettings.MAX_FACES);
+        WINTER_TWIGS = b.comment("Twigs on trees that have lost their leaves.",
+                                 "NONE: a bare tree shows its branches only.",
+                                 "NEAR: a twig wherever a leaf block touches a branch.",
+                                 "MORE: also on leaf blocks deeper in the crown (see twigDepth). A denser winter crown.",
+                                 "In spring the same twigs carry buds.")
+                .defineEnum("winterTwigs", standard.winterTwigs());
         b.pop();
 
         b.comment("The numbers the shapes are drawn by. A block has 16 pixels from one side to the other.")
@@ -88,6 +109,14 @@ public final class FoliageClientConfig {
                 .defineInRange("tipSize", standard.tipSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         CLUMP_SIZE = b.comment("MIXED: the size of an outermost tip's clump, in pixels.")
                 .defineInRange("clumpSize", standard.clumpSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
+        TWIG_DEPTH = b.comment("winterTwigs = MORE: Dynamic Trees gives every leaf block a number for how well it is supplied,",
+                               "1 at the far edge of the crown and higher toward the twig. A leaf block with this number",
+                               "or more gets a twig even if it touches no branch.")
+                .defineInRange("twigDepth", standard.twigDepth(), ShapeSettings.MIN_DEPTH, ShapeSettings.MAX_DEPTH);
+        FIRST_SIZE = b.comment("Spring: the size of the small clump of first leaves on a leaf block, in pixels.")
+                .defineInRange("firstSize", standard.firstSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
+        HALF_SIZE = b.comment("Spring: the size of the clump of half-grown leaves, in pixels. Not below firstSize.")
+                .defineInRange("halfSize", standard.halfSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         b.pop();
 
         SPEC = b.build();
@@ -105,6 +134,7 @@ public final class FoliageClientConfig {
             return ShapeSettings.DEFAULT;
         }
         return new ShapeSettings(SHAPE.get(), FAST_LEAVES.get(), MAX_FACES.get(), TIP_SIDES.get(), CLUMP_SIDES.get(),
-                CARD_WIDTH.get(), CARD_HEIGHT.get(), TUFT_SIZE.get(), TIP_SIZE.get(), CLUMP_SIZE.get());
+                CARD_WIDTH.get(), CARD_HEIGHT.get(), TUFT_SIZE.get(), TIP_SIZE.get(), CLUMP_SIZE.get(),
+                WINTER_TWIGS.get(), TWIG_DEPTH.get(), FIRST_SIZE.get(), HALF_SIZE.get());
     }
 }

@@ -1,5 +1,6 @@
 package io.github.superveryfastcar.foliage.shape;
 
+import io.github.superveryfastcar.foliage.season.LeafStage;
 import javax.annotation.Nullable;
 import net.minecraft.core.Direction;
 
@@ -40,11 +41,17 @@ import net.minecraft.core.Direction;
  *   <li>bits 22 to 25: the variant, a number from 0 to 15 that is fixed for
  *       the position and turns and shifts the pieces, so that neighbors do
  *       not look alike;</li>
- *   <li>bits 26 to 30: free.</li>
+ *   <li>bits 26 to 28: the stage of the leaf calendar the block is drawn
+ *       at ({@link LeafStage}). It picks the pictures: thinned leaves in
+ *       autumn, young ones in spring, a twig with or without buds;</li>
+ *   <li>bits 29 and 30: free.</li>
  * </ul>
  *
  * <p>Two leaf blocks with the same recipe are drawn from the very same
  * faces. The model builds the faces of a recipe once and keeps them.</p>
+ *
+ * <p>A recipe is never negative. {@link #NONE} stands for "this block is
+ * not drawn from a recipe".</p>
  */
 public final class Recipe {
 
@@ -68,6 +75,13 @@ public final class Recipe {
     private static final int TWIG_SHIFT = 16;
     private static final int ANCHOR_SHIFT = 19;
     private static final int VARIANT_SHIFT = 22;
+    private static final int STAGE_SHIFT = 26;
+
+    /**
+     * Not a recipe: the block is drawn by the model it had before Foliage
+     * (a plain cube in full leaf).
+     */
+    public static final int NONE = -1;
 
     /** How many variants there are. */
     public static final int VARIANTS = 16;
@@ -91,6 +105,16 @@ public final class Recipe {
      */
     public static int start(int open, int variant) {
         return (open & OPEN_MASK) | (variant & VARIANTS - 1) << VARIANT_SHIFT;
+    }
+
+    /** Sets the stage of the leaf calendar on a recipe that has none yet (which means {@link LeafStage#FULL}). */
+    public static int withStage(int recipe, LeafStage stage) {
+        return recipe | stage.ordinal() << STAGE_SHIFT;
+    }
+
+    /** The stage of the leaf calendar the block is drawn at. */
+    public static LeafStage stage(int recipe) {
+        return LeafStage.byNumber(recipe >> STAGE_SHIFT & 7);
     }
 
     /** Adds a number of cards (0 to 2) to a recipe that has none yet. */
@@ -201,10 +225,29 @@ public final class Recipe {
     }
 
     /**
+     * Whether a recipe shows anything where leaves cannot be see-through
+     * (the game's "fast" graphics). There a leaf picture is drawn as a
+     * filled square, so only stages with most of their leaves are drawn,
+     * as whole blocks; a spot with few leaves or none shows nothing.
+     */
+    public static boolean solid(int recipe) {
+        switch (stage(recipe)) {
+            case FULL:
+            case THIN:
+            case THINNER:
+            case HALF:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /**
      * How many faces are drawn where leaves cannot be see-through (the
-     * game's "fast" graphics): the outer faces of the open sides only.
+     * game's "fast" graphics): the outer faces of the open sides, or none
+     * at a stage with few leaves ({@link #solid}).
      */
     public static int solidQuadCount(int recipe) {
-        return Integer.bitCount(open(recipe));
+        return solid(recipe) ? Integer.bitCount(open(recipe)) : 0;
     }
 }

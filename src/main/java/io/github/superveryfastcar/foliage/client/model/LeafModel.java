@@ -1,5 +1,10 @@
 package io.github.superveryfastcar.foliage.client.model;
 
+import io.github.superveryfastcar.foliage.client.ClientLeafClock;
+import io.github.superveryfastcar.foliage.season.LeafClock;
+import io.github.superveryfastcar.foliage.season.LeafStage;
+import io.github.superveryfastcar.foliage.shape.LeafLook;
+import io.github.superveryfastcar.foliage.shape.LeafPicture;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeRules;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
@@ -9,28 +14,32 @@ import java.util.List;
 import javax.annotation.Nullable;
 import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.block.model.BakedQuad;
+import net.minecraft.client.renderer.texture.TextureAtlasSprite;
 import net.minecraft.client.resources.model.BakedModel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
 import net.minecraft.util.RandomSource;
 import net.minecraft.world.level.BlockAndTintGetter;
+import net.minecraft.world.level.LevelReader;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.client.model.BakedModelWrapper;
 import net.neoforged.neoforge.client.model.data.ModelData;
 import net.neoforged.neoforge.client.model.data.ModelProperty;
 
 /**
- * Draws one kind of Dynamic Trees leaves in the shape the player chose.
- * It wraps the leaf block's own model and takes its place in the game.
+ * Draws one kind of Dynamic Trees leaves in the shape the player chose and
+ * at the stage of the leaf calendar each leaf block is at. It wraps the
+ * leaf block's own model and takes its place in the game.
  *
  * <h2>How a leaf block is drawn</h2>
  * The game asks a model twice per block while it builds a chunk:
  * <ol>
  *   <li>{@link #getModelData} is asked once, with the block's position.
- *       Here the model looks at the six neighbors ({@link Surround}), lets
- *       {@link ShapeRules} decide which pieces the block gets (a
- *       {@link Recipe}), and hands back the finished faces of that recipe
- *       as a note for step 2.</li>
+ *       Here the model has the block's look worked out ({@link LeafLook}):
+ *       the stage of the leaf calendar it is at, its six neighbors
+ *       ({@link Surround}) and from them the pieces it gets (a
+ *       {@link Recipe}, decided by {@link ShapeRules}). It hands back the
+ *       finished faces of that recipe as a note for step 2.</li>
  *   <li>{@link #getQuads} is asked seven times, once per side of the block
  *       and once for "no side". It answers the six sides with nothing and
  *       gives all faces of the recipe in the last answer. Faces toward
@@ -43,14 +52,14 @@ import net.neoforged.neoforge.client.model.data.ModelProperty;
  * several threads at once. The faces of a recipe are made once and kept
  * ({@link Built}); two leaf blocks with the same recipe share them. Step 1
  * reads six neighbors, does a little arithmetic and one table lookup, and
- * makes no garbage. Step 2 is one lookup.
+ * makes no garbage. Step 2 is one lookup. In the months in which no tree
+ * changes, the leaf calendar costs nothing at all.
  *
  * <h2>When the model steps aside</h2>
- * With the shape set to "plain", or while Seasons shows leaves thinning
- * out, the model does nothing itself and passes every question on to the
- * model it wraps. Anything that asks for faces without step 1 (a leaf
- * block drawn in a hand, by another mod, as a falling block) also gets the
- * wrapped model's answer.
+ * With the shape set to "plain", a leaf block in full leaf is drawn by the
+ * model this one wraps. Anything that asks for faces without step 1 (a
+ * leaf block drawn in a hand, by another mod, as a falling block) also gets
+ * the wrapped model's answer.
  */
 public final class LeafModel extends BakedModelWrapper<BakedModel> {
 
@@ -61,12 +70,6 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
 
     /** The answer for the six sides of a block. */
     private static final List<BakedQuad> NOTHING = List.of();
-
-    /**
-     * One position holder per chunk-building thread, for looking at the
-     * neighbors without making garbage.
-     */
-    private static final ThreadLocal<BlockPos.MutableBlockPos> CURSOR = ThreadLocal.withInitial(BlockPos.MutableBlockPos::new);
 
     /** The pictures this kind of leaves is drawn with. */
     private final LeafSprites sprites;
@@ -110,22 +113,28 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
     @Override
     public ModelData getModelData(BlockAndTintGetter level, BlockPos pos, BlockState state, ModelData modelData) {
         LeafModels.Active active = LeafModels.active();
-        if (active == null) {
+        int recipe = recipe(active.settings(), ClientLeafClock.clock(), level, pos, state);
+        if (recipe == Recipe.NONE) {
             return super.getModelData(level, pos, state, modelData);
         }
-        Built built = built(active, recipe(active.settings(), level, pos, state));
+        Built built = built(active, recipe);
         // Leaf blocks carry no notes of their own, so nearly always the
         // ready-made note of the recipe can be handed out as it is.
         return modelData == ModelData.EMPTY ? built.data : modelData.derive().with(BUILT, built).build();
     }
 
     /**
-     * The recipe of the leaf block at a position, for the given settings.
-     * Also used by the tests, which compare it with what they see.
+     * The recipe of the leaf block at a position, for the given settings
+     * and moment of the leaf calendar, or {@link Recipe#NONE} if the block
+     * is drawn by the wrapped model. Also used by the tests, which compare
+     * it with what they see.
+     *
+     * @param clock the leaf calendar, or null for "everything in full leaf"
      */
-    static int recipe(ShapeSettings settings, BlockAndTintGetter level, BlockPos pos, BlockState state) {
-        int surround = Surround.read(level, pos, state, CURSOR.get());
-        return ShapeRules.recipe(settings, surround, ShapeRules.variant(pos.getX(), pos.getY(), pos.getZ()));
+    static int recipe(ShapeSettings settings, @Nullable LeafClock clock, BlockAndTintGetter level, BlockPos pos, BlockState state) {
+        // A chunk being built knows its blocks but not its biomes; those are read from the player's world.
+        LevelReader biomes = clock == null ? null : level instanceof LevelReader world ? world : ClientLeafClock.biomes();
+        return LeafLook.forThread().recipe(settings, clock, biomes, level, pos, state);
     }
 
     /** The finished faces of a recipe, built now if this is the first time it is needed. */
@@ -192,7 +201,11 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         /** The faces where leaves are see-through: all pieces of the recipe. */
         final List<BakedQuad> cutout;
 
-        /** The faces where leaves are not see-through: the outer faces of the open sides. */
+        /**
+         * The faces where leaves are not see-through: the outer faces of
+         * the open sides, or none at a stage with few leaves
+         * ({@link Recipe#solid}).
+         */
         final List<BakedQuad> solid;
 
         /** A ready-made note for step 2 that holds this object. */
@@ -218,16 +231,17 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         final RecipeTable<Built> table = new RecipeTable<>();
 
         // The pieces, made on first use. Only touched inside build().
-        /** Outer faces by side and quarter turn. */
-        private final BakedQuad[][] faces = new BakedQuad[6][4];
-        /** Inner planes by axis and quarter turn. */
-        private final BakedQuad[][][] planes = new BakedQuad[3][4][];
-        /** Cards by variant and by first or second card. */
-        private final BakedQuad[][][] cards = new BakedQuad[Recipe.VARIANTS][2][];
-        /** Clumps by size in pixels and by anchor (0 for none, else 1 plus the side's number); six faces each, by side. */
-        private final BakedQuad[][][] clumps = new BakedQuad[16][7][];
-        /** Twigs by growing direction and variant. */
-        private final BakedQuad[][][] twigs = new BakedQuad[6][Recipe.VARIANTS][];
+        // "By picture" is by the number of the LeafPicture the piece shows.
+        /** Outer faces by picture, side and quarter turn. */
+        private final BakedQuad[][][] faces = new BakedQuad[LeafPicture.COUNT][6][4];
+        /** Inner planes by picture, axis and quarter turn. */
+        private final BakedQuad[][][][] planes = new BakedQuad[LeafPicture.COUNT][3][4][];
+        /** Cards by picture, variant and by first or second card. */
+        private final BakedQuad[][][][] cards = new BakedQuad[LeafPicture.CARD_COUNT][Recipe.VARIANTS][2][];
+        /** Clumps by picture, size in pixels and anchor (0 for none, else 1 plus the side's number); six faces each, by side. */
+        private final BakedQuad[][][][] clumps = new BakedQuad[LeafPicture.COUNT][16][7][];
+        /** Twigs, bare (0) or with buds (1), by growing direction and variant. */
+        private final BakedQuad[][][][] twigs = new BakedQuad[2][6][Recipe.VARIANTS][];
 
         Cache(int version, ShapeSettings settings) {
             this.version = version;
@@ -251,35 +265,38 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
         private Built make(int recipe) {
             int open = Recipe.open(recipe);
             int variant = Recipe.variant(recipe);
-            List<BakedQuad> solid = new ArrayList<>(6);
+            LeafStage stage = Recipe.stage(recipe);
+            // The stage picks the pictures; the pieces are the recipe's.
+            LeafPicture picture = LeafPicture.forStage(stage);
+            List<BakedQuad> outer = new ArrayList<>(6);
             for (Direction side : DIRECTIONS) {
                 if ((open & 1 << side.ordinal()) != 0) {
-                    solid.add(face(side, variant + side.ordinal() & 3));
+                    outer.add(face(picture, side, variant + side.ordinal() & 3));
                 }
             }
             List<BakedQuad> cutout = new ArrayList<>(12);
             if (Recipe.faces(recipe)) {
-                cutout.addAll(solid);
+                cutout.addAll(outer);
             }
             // Each plane's picture is turned differently, so that the three do not line up.
             if (Recipe.plane(recipe, Recipe.PLANE_X)) {
-                addAll(cutout, plane(0, variant + 2 & 3));
+                addAll(cutout, plane(picture, 0, variant + 2 & 3));
             }
             if (Recipe.plane(recipe, Recipe.PLANE_Y)) {
-                addAll(cutout, plane(1, variant + 3 & 3));
+                addAll(cutout, plane(picture, 1, variant + 3 & 3));
             }
             if (Recipe.plane(recipe, Recipe.PLANE_Z)) {
-                addAll(cutout, plane(2, variant + 1 & 3));
+                addAll(cutout, plane(picture, 2, variant + 1 & 3));
             }
-            if (sprites.card() != null) {
+            if (sprites.card(picture) != null) {
                 for (int index = 0; index < Recipe.cards(recipe); index++) {
-                    addAll(cutout, card(variant, index));
+                    addAll(cutout, card(picture, variant, index));
                 }
             }
             int clump = Recipe.clump(recipe);
             if (clump != 0) {
                 Direction anchor = Recipe.anchor(recipe);
-                BakedQuad[] faces = clump(clump, anchor);
+                BakedQuad[] faces = clump(picture, clump, anchor);
                 // The face against a covered side cannot be seen.
                 boolean hidden = Recipe.clumpFaces(recipe) == 5;
                 for (Direction side : DIRECTIONS) {
@@ -290,58 +307,54 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             }
             Direction grow = Recipe.twig(recipe);
             if (grow != null && sprites.twigs().length > 0) {
-                addAll(cutout, twig(grow, variant));
+                // A twig carries buds before its leaves are out and while the first ones are.
+                addAll(cutout, twig(stage == LeafStage.BUDS || stage == LeafStage.FIRST, grow, variant));
             }
-            return new Built(recipe, List.copyOf(cutout), List.copyOf(solid));
+            return new Built(recipe, List.copyOf(cutout), Recipe.solid(recipe) ? List.copyOf(outer) : NOTHING);
         }
 
-        private BakedQuad face(Direction side, int turn) {
-            BakedQuad face = faces[side.ordinal()][turn];
-            if (face == null) {
-                face = QuadMaker.face(sprites.leaf(), side, turn, tint);
-                faces[side.ordinal()][turn] = face;
+        private BakedQuad face(LeafPicture picture, Direction side, int turn) {
+            BakedQuad[] row = faces[picture.ordinal()][side.ordinal()];
+            if (row[turn] == null) {
+                row[turn] = QuadMaker.face(sprites.leaf(picture), side, turn, tint);
             }
-            return face;
+            return row[turn];
         }
 
-        private BakedQuad[] plane(int axis, int turn) {
-            BakedQuad[] plane = planes[axis][turn];
-            if (plane == null) {
-                plane = QuadMaker.plane(sprites.leaf(), axis, turn, tint);
-                planes[axis][turn] = plane;
+        private BakedQuad[] plane(LeafPicture picture, int axis, int turn) {
+            BakedQuad[][] row = planes[picture.ordinal()][axis];
+            if (row[turn] == null) {
+                row[turn] = QuadMaker.plane(sprites.leaf(picture), axis, turn, tint);
             }
-            return plane;
+            return row[turn];
         }
 
-        private BakedQuad[] card(int variant, int index) {
-            BakedQuad[] card = cards[variant][index];
-            if (card == null) {
-                card = QuadMaker.card(sprites.card(), variant, index, settings.cardWidth(), settings.cardHeight(), tint);
-                cards[variant][index] = card;
+        private BakedQuad[] card(LeafPicture picture, int variant, int index) {
+            BakedQuad[][] row = cards[picture.ordinal()][variant];
+            if (row[index] == null) {
+                row[index] = QuadMaker.card(sprites.card(picture), variant, index, settings.cardWidth(), settings.cardHeight(), tint);
             }
-            return card;
+            return row[index];
         }
 
-        private BakedQuad[] clump(int size, @Nullable Direction anchor) {
+        private BakedQuad[] clump(LeafPicture picture, int size, @Nullable Direction anchor) {
             int anchorCode = anchor == null ? 0 : 1 + anchor.ordinal();
-            BakedQuad[] clump = clumps[size][anchorCode];
-            if (clump == null) {
-                clump = QuadMaker.clump(sprites.leaf(), size, anchor, tint);
-                clumps[size][anchorCode] = clump;
+            BakedQuad[][] row = clumps[picture.ordinal()][size];
+            if (row[anchorCode] == null) {
+                row[anchorCode] = QuadMaker.clump(sprites.leaf(picture), size, anchor, tint);
             }
-            return clump;
+            return row[anchorCode];
         }
 
-        private BakedQuad[] twig(Direction grow, int variant) {
-            BakedQuad[] twig = twigs[grow.ordinal()][variant];
-            if (twig == null) {
+        private BakedQuad[] twig(boolean buds, Direction grow, int variant) {
+            BakedQuad[][] row = twigs[buds ? 1 : 0][grow.ordinal()];
+            if (row[variant] == null) {
                 // Two of the twig pictures per twig, a different pair per variant.
-                int pictures = sprites.twigs().length;
-                twig = QuadMaker.twig(sprites.twigs()[(variant & 3) % pictures],
-                        sprites.twigs()[((variant >> 2) + 1 + (variant & 3)) % pictures], grow);
-                twigs[grow.ordinal()][variant] = twig;
+                TextureAtlasSprite[] pictures = buds ? sprites.budTwigs() : sprites.twigs();
+                row[variant] = QuadMaker.twig(pictures[(variant & 3) % pictures.length],
+                        pictures[((variant >> 2) + 1 + (variant & 3)) % pictures.length], grow);
             }
-            return twig;
+            return row[variant];
         }
 
         private void addAll(List<BakedQuad> list, BakedQuad[] piece) {

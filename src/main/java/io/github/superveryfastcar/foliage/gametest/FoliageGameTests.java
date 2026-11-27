@@ -4,14 +4,22 @@ import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import com.dtteam.dynamictrees.tree.species.Species;
 import com.dtteam.dynamictrees.worldgen.JoCode;
+import io.github.superveryfastcar.calendar.api.CalendarRules;
+import io.github.superveryfastcar.calendar.api.Season;
 import io.github.superveryfastcar.foliage.Foliage;
+import io.github.superveryfastcar.foliage.season.LeafClock;
+import io.github.superveryfastcar.foliage.season.LeafStage;
+import io.github.superveryfastcar.foliage.season.SeasonSettings;
 import io.github.superveryfastcar.foliage.shape.CardPicture;
+import io.github.superveryfastcar.foliage.shape.LeafLook;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
 import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeRules;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.foliage.shape.Surround;
+import io.github.superveryfastcar.foliage.shape.WinterTwigs;
 import io.github.superveryfastcar.foliage.util.PosHash;
+import io.github.superveryfastcar.seasons.api.SeasonsApi;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
@@ -50,7 +58,11 @@ import net.neoforged.neoforge.gametest.PrefixGameTestTemplate;
  *       blocks is read the way the leaf model reads it. The tests check
  *       that neighbors agree about the side between them, that twigs point
  *       away from the wood, and how many faces each shape needs per leaf
- *       block (written to the log, and held against a limit).</li>
+ *       block (written to the log, and held against a limit). Then each
+ *       tree is taken through a whole year of the leaf calendar, step by
+ *       step: no leaf block may ever need more faces than the limit,
+ *       neighbors must agree at every step about the side between them,
+ *       and a kind that does not shed must look the same all year.</li>
  * </ol>
  * What the game client really draws is checked by the self test in the
  * {@code dev} package, which needs a screen (or a pretend one).
@@ -110,7 +122,7 @@ public final class FoliageGameTests {
      * A failed check: writes it to the log, then stops the test. The log
      * matters because the game's own report of a failed test is short.
      */
-    private static GameTestAssertException failure(String message) {
+    static GameTestAssertException failure(String message) {
         if (LOGGED_FAILURES.size() < 1000 && LOGGED_FAILURES.add(message)) {
             Foliage.LOGGER.warn("Foliage test: a check did not hold: {}", message);
         }
@@ -118,7 +130,7 @@ public final class FoliageGameTests {
     }
 
     /** Fails the test with a message unless the condition holds. */
-    private static void check(boolean condition, String message) {
+    static void check(boolean condition, String message) {
         if (!condition) {
             throw failure(message);
         }
@@ -206,6 +218,7 @@ public final class FoliageGameTests {
                         Direction heartSide = heart < 0 ? null : DIRECTIONS[heart];
                         int packed = Surround.of(open, woodSide, heartSide, loaded == 1);
                         String what = "open " + open + " wood " + woodSide + " heart " + heartSide + " loaded " + loaded;
+                        check(!Surround.sheltered(packed), "packed by hand, a block is not sheltered: " + what);
                         check(Surround.open(packed) == open, "open sides kept: " + what);
                         check(Surround.openCount(packed) == Integer.bitCount(open), "open sides counted: " + what);
                         check(Surround.wood(packed) == woodSide, "wood kept: " + what);
@@ -469,7 +482,7 @@ public final class FoliageGameTests {
     /** Numbers outside their range are pulled back into it. */
     @GameTest(template = "empty", batch = "foliage_rules")
     public static void settingsStayInRange(GameTestHelper helper) {
-        ShapeSettings wild = new ShapeSettings(null, false, 99, 9, 2, 500, -3, 0, 99, 1);
+        ShapeSettings wild = new ShapeSettings(null, false, 99, 9, 2, 500, -3, 0, 99, 1, null, 99, 99, 1);
         check(wild.shape() == LeafShape.MIXED, "a missing shape becomes the mod's own");
         check(wild.maxFaces() == ShapeSettings.MAX_FACES, "the limit on faces at most " + ShapeSettings.MAX_FACES);
         check(wild.withMaxFaces(1).maxFaces() == ShapeSettings.MIN_FACES, "and at least " + ShapeSettings.MIN_FACES);
@@ -478,17 +491,23 @@ public final class FoliageGameTests {
         check(wild.cardWidth() == ShapeSettings.MAX_CARD && wild.cardHeight() == ShapeSettings.MIN_CARD, "card sizes in range");
         check(wild.tuftSize() == ShapeSettings.MIN_CLUMP && wild.tipSize() == ShapeSettings.MAX_CLUMP
                 && wild.clumpSize() == ShapeSettings.MIN_CLUMP, "clump sizes in range");
+        check(wild.winterTwigs() == WinterTwigs.NEAR, "a missing choice of winter twigs becomes the mod's own");
+        check(wild.twigDepth() == ShapeSettings.MAX_DEPTH, "the twig depth at most " + ShapeSettings.MAX_DEPTH);
+        check(wild.firstSize() == ShapeSettings.MAX_CLUMP && wild.halfSize() == ShapeSettings.MAX_CLUMP,
+                "the clumps of spring in range, the half-grown one not smaller than the first: " + wild.firstSize() + ", " + wild.halfSize());
         // Every clump size in range fits into a recipe.
         for (int size = ShapeSettings.MIN_CLUMP; size <= ShapeSettings.MAX_CLUMP; size++) {
             check(Recipe.clump(Recipe.withClump(Recipe.start(63, 0), size, Direction.DOWN)) == size, "clump size " + size + " fits into a recipe");
         }
         ShapeSettings standard = ShapeSettings.DEFAULT;
         check(standard.equals(new ShapeSettings(standard.shape(), standard.fastLeaves(), standard.maxFaces(), standard.tipSides(),
-                standard.clumpSides(), standard.cardWidth(), standard.cardHeight(), standard.tuftSize(), standard.tipSize(), standard.clumpSize())),
+                standard.clumpSides(), standard.cardWidth(), standard.cardHeight(), standard.tuftSize(), standard.tipSize(), standard.clumpSize(),
+                standard.winterTwigs(), standard.twigDepth(), standard.firstSize(), standard.halfSize())),
                 "the mod's own numbers are all in range");
         check(standard.maxFaces() == 6, "the mod's own limit is the 6 faces of the unmodded game");
         check(standard.withShape(LeafShape.SHELL).shape() == LeafShape.SHELL && standard.withFastLeaves(true).fastLeaves()
-                && standard.withMaxFaces(9).maxFaces() == 9, "changed copies");
+                && standard.withMaxFaces(9).maxFaces() == 9 && standard.withWinterTwigs(WinterTwigs.MORE).winterTwigs() == WinterTwigs.MORE,
+                "changed copies");
         helper.succeed();
     }
 
@@ -586,6 +605,7 @@ public final class FoliageGameTests {
         Tree tree = Tree.plant(helper, "dynamictrees:oak", BIG_OAK);
         try {
             tree.checkAll(true);
+            tree.checkYear(true);
         } finally {
             tree.remove();
         }
@@ -598,6 +618,7 @@ public final class FoliageGameTests {
         Tree tree = Tree.plant(helper, "dynamictrees:birch", Tree.storedCode("dynamictrees:birch", 0));
         try {
             tree.checkAll(false);
+            tree.checkYear(true);
         } finally {
             tree.remove();
         }
@@ -610,6 +631,7 @@ public final class FoliageGameTests {
         Tree tree = Tree.plant(helper, "dynamictrees:dark_oak", Tree.storedCode("dynamictrees:dark_oak", 0));
         try {
             tree.checkAll(true);
+            tree.checkYear(true);
         } finally {
             tree.remove();
         }
@@ -622,6 +644,7 @@ public final class FoliageGameTests {
         Tree tree = Tree.plant(helper, "dynamictrees:spruce", Tree.storedCode("dynamictrees:spruce", 0));
         try {
             tree.checkAll(false);
+            tree.checkYear(false);
         } finally {
             tree.remove();
         }
@@ -640,6 +663,7 @@ public final class FoliageGameTests {
                 Tree tree = Tree.plant(helper, kind, Tree.storedCode(kind, rank));
                 try {
                     tree.checkAll(false);
+                    tree.checkYear(false);
                 } finally {
                     tree.remove();
                 }
@@ -797,6 +821,10 @@ public final class FoliageGameTests {
                 BlockState state = level.getBlockState(leaf);
                 int around = Surround.read(level, leaf, state);
                 buried += Surround.open(around) == 0 ? 1 : 0;
+                check(Surround.sheltered(around) == (Surround.open(around) == 0),
+                        "in full leaf, a block is sheltered exactly if it is buried, at " + leaf);
+                check(Surround.sheltered(Surround.read(level, leaf, state, new BlockPos.MutableBlockPos(), Surround.NO_LEAF_COVERS))
+                        == Surround.sheltered(around), "whether a block is sheltered does not depend on its neighbors' leaves, at " + leaf);
                 // Neighbors agree about the side between them.
                 for (Direction side : DIRECTIONS) {
                     BlockPos near = leaf.relative(side);
@@ -865,6 +893,109 @@ public final class FoliageGameTests {
             check(fast[2] <= PLAIN_FACES && fast[1] == 0.0, "with fewest faces, no leaf block over 6 faces and nothing at a slant");
             check(fast[0] <= faces(settings(LeafShape.SHELL))[0], "fewest faces needs no more than shell");
             check(solid[0] <= fast[0], "leaves that are not see-through need the fewest of all");
+        }
+
+        /**
+         * The tree through a whole year of the leaf calendar, with the
+         * mod's own rules and the Calendar mod's own seasons, one step
+         * after another. The date of the world is not touched: a clock is
+         * made by hand for every step.
+         *
+         * @param sheds whether this kind of tree loses its leaves
+         */
+        void checkYear(boolean sheds) {
+            SeasonSettings rules = SeasonSettings.DEFAULT;
+            CalendarRules year = CalendarRules.DEFAULT;
+            check(SeasonsApi.hasWinter(level.getNoiseBiome(root.getX() >> 2, root.getY() >> 2, root.getZ() >> 2).value()),
+                    "the test world has a winter where the " + species + " stands");
+            LeafLook look = LeafLook.forThread();
+            int count = leaves.size();
+            BlockState[] states = new BlockState[count];
+            for (int i = 0; i < count; i++) {
+                states[i] = level.getBlockState(leaves.get(i));
+            }
+            long steps = (long) year.yearLength() * rules.stepsPerDay();
+            long winterStart = (long) (year.firstDayOfYear(Season.WINTER) - 1) * rules.stepsPerDay();
+            StringBuilder report = new StringBuilder();
+            // Every shape, also the plain one, at the limit of 6; and the mixed shape with more twigs and without a limit.
+            List<ShapeSettings> looks = new ArrayList<>();
+            for (LeafShape shape : LeafShape.values()) {
+                looks.add(settings(shape));
+            }
+            looks.add(rich(LeafShape.MIXED).withWinterTwigs(WinterTwigs.MORE));
+            for (ShapeSettings shape : looks) {
+                boolean plain = shape.shape() == LeafShape.PLAIN;
+                int[] summer = new int[count];
+                for (int i = 0; i < count; i++) {
+                    summer[i] = look.recipe(shape, null, null, level, leaves.get(i), states[i]);
+                    check(plain ? summer[i] == Recipe.NONE : summer[i] == ShapeRules.recipe(shape,
+                                    Surround.read(level, leaves.get(i), states[i]), ShapeRules.variant(leaves.get(i).getX(), leaves.get(i).getY(), leaves.get(i).getZ())),
+                            "without a clock a leaf block is drawn as in full leaf, at " + leaves.get(i));
+                }
+                double summerFaces = 0;
+                double winterFaces = 0;
+                double mostFaces = 0;
+                long mostAt = 0;
+                int twigs = 0;
+                // A kind that keeps its leaves is the same at every step; a few steps show it.
+                for (long step = 0; step < steps; step += sheds ? 1 : 37) {
+                    LeafClock clock = LeafClock.of(rules, year, step);
+                    String when = species + ", " + shape.shape() + ", step " + step;
+                    long faces = 0;
+                    int bare = 0;
+                    int twigsNow = 0;
+                    for (int i = 0; i < count; i++) {
+                        BlockPos leaf = leaves.get(i);
+                        LeafStage stage = look.stage(clock, level, states[i], leaf.getX(), leaf.getY(), leaf.getZ());
+                        int recipe = look.recipe(shape, clock, level, level, leaf, states[i]);
+                        if (!sheds || clock.allFull()) {
+                            check(stage == LeafStage.FULL && recipe == summer[i], "in full leaf, and drawn as without a clock, at " + leaf + ": " + when);
+                        }
+                        if (recipe == Recipe.NONE) {
+                            check(plain && stage == LeafStage.FULL, "only a plain block in full leaf is left to the model it had before: " + when);
+                            faces += PLAIN_FACES;
+                            continue;
+                        }
+                        check(Recipe.stage(recipe) == stage, "the recipe carries the stage of the block, at " + leaf + ": " + when);
+                        int quads = Recipe.quadCount(recipe);
+                        check(quads <= shape.maxFaces(), "never more faces than the limit, got " + quads + " at " + leaf + ": " + when);
+                        faces += quads;
+                        bare += stage == LeafStage.BARE ? 1 : 0;
+                        twigsNow += Recipe.twig(recipe) != null && stage == LeafStage.BARE ? 1 : 0;
+                        if (plain || !sheds) {
+                            continue;
+                        }
+                        // Neighbors agree: a side toward a leaf block is open exactly if that block does not cover.
+                        for (Direction side : DIRECTIONS) {
+                            BlockPos near = leaf.relative(side);
+                            BlockState other = level.getBlockState(near);
+                            if (other.getBlock() instanceof LeavesBlock) {
+                                boolean covers = look.stage(clock, level, other, near.getX(), near.getY(), near.getZ()).covers();
+                                check((Recipe.open(recipe) >> side.ordinal() & 1) == (covers ? 0 : 1),
+                                        "a side toward a leaf block is open exactly if that block has lost its leaves, at " + leaf + " " + side + ": " + when);
+                            }
+                        }
+                    }
+                    double perBlock = faces / (double) count;
+                    if (clock.allFull()) {
+                        summerFaces = perBlock;
+                    }
+                    if (step >= winterStart) {
+                        check(!sheds || bare == count, "in winter every leaf block of a tree that sheds is bare: " + when);
+                        winterFaces = perBlock;
+                        twigs = twigsNow;
+                    }
+                    if (perBlock > mostFaces) {
+                        mostFaces = perBlock;
+                        mostAt = step;
+                    }
+                }
+                check(mostFaces <= Math.max(PLAIN_FACES, shape.maxFaces()), "the year's most faces per leaf block stay within the limit");
+                report.append(String.format(Locale.ROOT, "; %s%s summer %.2f, winter %.2f (%d twigs), most %.2f on day %d",
+                        shape.shape().name().toLowerCase(Locale.ROOT), shape.maxFaces() > PLAIN_FACES ? " without limit, more twigs" : "",
+                        summerFaces, winterFaces, twigs, mostFaces, mostAt / rules.stepsPerDay() + 1));
+            }
+            Foliage.LOGGER.info("Foliage test: {} through the year, {} leaf blocks, faces per leaf block{}", species, count, report);
         }
 
         /**

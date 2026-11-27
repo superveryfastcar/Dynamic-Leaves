@@ -2,10 +2,12 @@ package io.github.superveryfastcar.foliage.client.model;
 
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import io.github.superveryfastcar.foliage.Foliage;
-import io.github.superveryfastcar.foliage.client.SeasonsLink;
+import io.github.superveryfastcar.foliage.client.ClientLeafClock;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
-import io.github.superveryfastcar.foliage.shape.LeafShape;
+import io.github.superveryfastcar.foliage.shape.LeafPicture;
+import io.github.superveryfastcar.foliage.shape.Recipe;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
+import io.github.superveryfastcar.seasons.api.client.SeasonsClientApi;
 import java.util.ArrayList;
 import java.util.IdentityHashMap;
 import java.util.List;
@@ -37,6 +39,14 @@ import net.neoforged.neoforge.client.model.data.ModelData;
  * The leaf models as a whole: the settings they draw by, and putting them
  * in place of Dynamic Trees' own leaf models when the game loads its
  * resources.
+ *
+ * <h2>Seasons</h2>
+ * Seasons thins the leaves of oak, birch and dark oak in autumn by putting
+ * a model of its own around every model with one of their textures. For
+ * the leaves of Dynamic Trees, Foliage draws the year itself, so it builds
+ * on the model underneath Seasons' one
+ * ({@link SeasonsClientApi#withoutBareLeaves}). Leaf blocks that Foliage
+ * leaves alone keep Seasons' look.
  *
  * <h2>Thread rule</h2>
  * Leaf models are asked on the chunk-building threads, many at once. They
@@ -96,15 +106,9 @@ public final class LeafModels {
         redraw();
     }
 
-    /**
-     * The settings to draw by right now, or null while the models step
-     * aside: with the shape set to plain, and while Seasons shows leaves
-     * thinning out (until this mod draws the bare months itself).
-     */
-    @Nullable
+    /** The settings to draw by right now, with their running number. */
     static Active active() {
-        Active active = current;
-        return active.settings().shape() == LeafShape.PLAIN || SeasonsLink.thinning() ? null : active;
+        return current;
     }
 
     /** Has every chunk on screen built again, on the game's main thread. */
@@ -157,7 +161,8 @@ public final class LeafModels {
                 }
                 BakedModel replacement = decided.get(model);
                 if (replacement == null) {
-                    LeafModel leafModel = wrapOne(event, model, state, random, twigsByTexture);
+                    // Foliage draws the year itself: it builds on the model under Seasons' bare-tree look.
+                    LeafModel leafModel = wrapOne(event, SeasonsClientApi.withoutBareLeaves(model), state, random, twigsByTexture);
                     if (leafModel != null) {
                         wrapped.add(leafModel);
                         if (leafModel.sprites().card() == null) {
@@ -227,19 +232,38 @@ public final class LeafModels {
         }
         ResourceLocation texture = leaf.contents().name();
         ResourceLocation twigBase = twigsByTexture.get(texture);
-        TextureAtlasSprite card = twigBase == null ? null : sprite(event, LeafPartsSource.cardName(texture));
+        // Only a texture that is listed in an atlas source has pictures made from it.
+        boolean listed = twigBase != null;
         if (twigBase == null) {
             twigBase = LeafPartsSource.DEFAULT_TWIGS;
         }
+        TextureAtlasSprite[] leaves = new TextureAtlasSprite[LeafPicture.COUNT];
+        TextureAtlasSprite[] cards = new TextureAtlasSprite[LeafPicture.CARD_COUNT];
+        for (int number = 0; number < LeafPicture.COUNT; number++) {
+            LeafPicture which = LeafPicture.byNumber(number);
+            TextureAtlasSprite made = number == 0 || !listed ? null : sprite(event, LeafPartsSource.leafName(texture, which));
+            // Without a picture of its own, a stage is drawn with the leaf texture itself.
+            leaves[number] = made != null ? made : leaf;
+            if (number < LeafPicture.CARD_COUNT) {
+                ResourceLocation cardName = LeafPartsSource.cardName(texture, which);
+                TextureAtlasSprite card = listed && cardName != null ? sprite(event, cardName) : null;
+                cards[number] = card != null ? card : cards[0];
+            }
+        }
         List<TextureAtlasSprite> twigs = new ArrayList<>();
+        List<TextureAtlasSprite> budTwigs = new ArrayList<>();
+        ResourceLocation budBase = LeafPartsSource.budTwigs(twigBase);
         for (int number = 0; number < LeafPartsSource.MAX_TWIG_PICTURES; number++) {
             TextureAtlasSprite twig = sprite(event, twigBase.withSuffix("_" + number));
             if (twig == null) {
                 break;
             }
             twigs.add(twig);
+            TextureAtlasSprite withBuds = sprite(event, budBase.withSuffix("_" + number));
+            budTwigs.add(withBuds != null ? withBuds : twig);
         }
-        return new LeafModel(model, new LeafSprites(leaf, card, twigs.toArray(TextureAtlasSprite[]::new)), tint);
+        return new LeafModel(model, new LeafSprites(leaves, cards, twigs.toArray(TextureAtlasSprite[]::new),
+                budTwigs.toArray(TextureAtlasSprite[]::new)), tint);
     }
 
     /** A picture from the block atlas, or null if the atlas has none of that name. */
@@ -269,18 +293,37 @@ public final class LeafModels {
     }
 
     /**
-     * The recipe the leaf model would draw the block at a position by, or
-     * -1 if the block's model is not one of ours or the models step aside.
-     * See {@link io.github.superveryfastcar.foliage.shape.Recipe}.
+     * Whether the block at a position is drawn by one of Foliage's leaf
+     * models.
+     */
+    public static boolean drawsAt(BlockAndTintGetter level, BlockPos pos) {
+        return Minecraft.getInstance().getBlockRenderer().getBlockModel(level.getBlockState(pos)) instanceof LeafModel;
+    }
+
+    /**
+     * Whether the model under the leaf model of the block at a position is
+     * one of Seasons' bare-tree models. It never should be: Foliage builds
+     * on the model underneath those.
+     */
+    public static boolean onSeasonsModelAt(BlockAndTintGetter level, BlockPos pos) {
+        BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(level.getBlockState(pos));
+        return model instanceof LeafModel leafModel && SeasonsClientApi.withoutBareLeaves(leafModel.original()) != leafModel.original();
+    }
+
+    /**
+     * The recipe the leaf model draws the block at a position by right
+     * now: with the settings in use and at this moment of the leaf
+     * calendar. {@link Recipe#NONE} if the block's model is not one of
+     * ours, or if the block is drawn by the model it had before (plain
+     * shape, in full leaf). See {@link Recipe}.
      */
     public static int recipeAt(BlockAndTintGetter level, BlockPos pos) {
         BlockState state = level.getBlockState(pos);
         BakedModel model = Minecraft.getInstance().getBlockRenderer().getBlockModel(state);
-        Active active = active();
-        if (!(model instanceof LeafModel) || active == null) {
-            return -1;
+        if (!(model instanceof LeafModel)) {
+            return Recipe.NONE;
         }
-        return LeafModel.recipe(active.settings(), level, pos, state);
+        return LeafModel.recipe(current.settings(), ClientLeafClock.clock(), level, pos, state);
     }
 
     /**

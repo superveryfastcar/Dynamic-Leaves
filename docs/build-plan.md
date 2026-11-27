@@ -53,9 +53,10 @@ falling leaves are particles.
 - The **look** of a leaf spot is a pure function of date, tree kind, tree
   shift and spot order. The client model computes it in `getModelData` and
   hands out prebuilt quad lists. No block changes for looks.
-- The **real block** is a leaf (green months) or a placeholder (winter),
-  swapped once per transition, at night, quietly, a chunk at a time, plus
-  catch-up for chunks that were away.
+- The **real block** is a leaf or a placeholder (the bare block), swapped
+  quietly, a chunk at a time. First plan: once per transition, at night,
+  plus catch-up for chunks that were away. Since stage 2: spot by spot as
+  the leaf clock steps, with nothing stored (see "Stage 3 plan").
 - A spot that shows leaves is always a real leaf block. A leaf whose look is
   bare has no collision and no outline.
 - The placeholder is a second leaf kind of the same Dynamic Trees family, so
@@ -69,7 +70,7 @@ falling leaves are particles.
 | --- | --- | --- | --- |
 | 1 | 0.1.0 | Shapes: sprite source for leaf cards, shape rules, leaf model, wrapping of Dynamic Trees leaves, client settings | unit-style game tests of the rules, self test with pictures and face counts, with Sodium |
 | 2 | 0.2.0 | Leaf calendar: the look rule, thinned and small leaf sprites, twigs and buds, stages in the model, Seasons 0.4.0 API | game tests of the rule day by day, self test through the year |
-| 3 | 0.3.0 | Real blocks: own leaf kind, placeholder, nightly swap, catch-up, Dynamic Trees season manager, note to Distant Horizons | two proofs first (below), game tests of every row of "Cases thought through", long run |
+| 3 | 0.3.0 | Real blocks: a bare block per kind, swapped spot by spot as the leaf clock steps, Dynamic Trees season manager, note to Distant Horizons (plan rewritten below) | proof that Dynamic Trees accepts the bare block first, game tests of every row of "Cases thought through", long run |
 | 4 | 0.4.0 | Finish: falling leaf particles, snow on crowns, fruit, `/foliage restore`, measurements, helper review | measurements file, review findings fixed |
 | 5 | later | Far tree colors in Distant Horizons, falling tree, cherry blossom, leaf litter | each on the owner's word |
 
@@ -154,29 +155,163 @@ inner plane and card fill the gap.
   to one drawn bare keeps that face.
 - Never the translucent render type.
 
+### Stage 2 as built (2026-11-27)
+
+The rule (`season/LeafClock`): the year is cut into steps (4 a day). Each
+kind of leaves has a start day inside the window of fall or return; each
+tree is shifted by smooth noise over its position (trees close together go
+together); each leaf spot has its turn inside its tree's days, by its
+Dynamic Trees depth and a fixed scatter. A spot's stage is a pure function
+of step, kind, position and depth. Nothing is stored.
+
+What a spot is drawn from at each stage (`shape/ShapeRules`), for the
+shapes other than plain:
+
+| Stage | Pieces |
+| --- | --- |
+| Full, thin, thinner | The shape's own pieces, with the stage's picture. |
+| Last leaves | On a twig spot: the twig and one upright plane along it. Else two upright planes. |
+| Bare | On a twig spot: the twig. Else nothing. |
+| Buds | The same, with the picture of the twig with buds. |
+| First leaves | On a twig spot: bud twig and one plane. Else a small clump against the support. |
+| Half grown | A larger clump against the support, else outer faces and planes. |
+
+Decided while building, each for a reason seen in numbers or pictures:
+
+- **The plain shape stays cubes.** With `shape = PLAIN` every stage with
+  leaves is the whole cube with the stage's picture, and leaf blocks never
+  hide each other's faces. It is the unmodded look through the year, for
+  players who want exactly that.
+- **Twig spots.** Which leaf spots of a bare tree carry a twig is a setting
+  (`winterTwigs`): none, the spots next to wood (default, about a quarter
+  of the leaf blocks), or also spots deep in the crown.
+- **Inside the crown.** A leaf block whose six neighbors are all leaves or
+  solid blocks is buried in summer and costs nothing. While leaves fall or
+  grow its neighbors open up and it would be drawn in full: the costliest
+  days of the year were then days 4 to 6 of spring with 5.6 faces per leaf
+  block. Such a block now draws outer faces only while in leaf, one upright
+  plane as last or first leaves and two when half grown: 5.1 to 5.3 on the
+  costliest day.
+- **A leaf block covers its neighbors only while full or in its first
+  thinning.** From the second thinning on the neighbor's face toward it is
+  drawn.
+- **Fast graphics.** Leaves that cannot be see-through are drawn as the
+  outside of the crown while full, thinning or half grown, and not at all
+  as last or first leaves.
+- **Whose rules.** The rules of the world are the server's and are sent to
+  each player. A client that is sent none (a server without Foliage) uses
+  its own file instead of showing no year at all.
+- **Seasons 0.4.0** got four calls instead of a step listener:
+  `SeasonsApi.hasWinter`, `SeasonsClientApi.requestRedraw`,
+  `withoutBareLeaves` and `leafSprite`. Foliage counts its own steps
+  (`stepsPerDay`), so it does not depend on how often Seasons changes its
+  colors.
+
+Known and left for stage 3: the leaf blocks of a bare tree are still in
+the world (snow, shade, collision), and because they still dim the light,
+leaves left deep inside a half-bare crown are drawn too dark (see "Tricky
+spots, stage 3"). Callers without the model's data
+(items, falling blocks, Dynamic Trees' falling tree) get the full leaf cube
+whatever the season.
+
+### Stage 3 plan (rewritten 2026-11-27 after stage 2)
+
+**What changed against the first plan, and why.** The first plan swapped a
+whole tree once per transition, at night, and kept a mark per chunk. The
+stage 2 pictures showed that this is not enough: a leaf block that is only
+drawn bare still dims the light by one and darkens its neighbors' corners
+like a full block. The last leaves of autumn and the first of spring, deep
+in a crown whose outer blocks are drawn bare, came out nearly black, and the
+ground under a bare tree stayed in shade. So the real block now follows its
+own spot, step by step.
+
+**The rule.** A leaf spot of a kind that sheds is a **bare block** (the
+placeholder) while its stage is last leaves, bare, buds or first leaves,
+and its **leaf block** while it is full, thin, thinner or half grown. Which
+of the two is right is a pure function of the date, the kind, the place and
+the Dynamic Trees depth: the same rule the look uses. Nothing is stored. In
+total every leaf block still changes twice a year.
+
+**The look does not depend on which of the two blocks is there.** Both are
+drawn by the same leaf model from the same rule, so a block that has not
+been swapped yet looks right already. The swap only changes light,
+collision, what snow and rain do, and what Dynamic Trees and other mods
+see.
+
+Parts, in build order:
+
+1. `block/BareLeavesProperties` and `block/BareLeavesBlock`: a leaf kind
+   type `foliage:bare` for Dynamic Trees and its block. One per kind that
+   sheds, as tree pack files `trees/foliage/leaves_properties/bare_oak.json`,
+   `bare_birch.json`, `bare_dark_oak.json` (family and cell kit of the
+   kind it stands in for). The block: a `DynamicLeavesBlock` without
+   collision, without outline, without forced solidity (rain and snow fall
+   through, nothing rests on it), light dimming 0, shade brightness 1,
+   never ticks at random, can be replaced like air, does not burn, drops
+   nothing, slows nobody. It keeps the Dynamic Trees depth of the leaf it
+   replaced.
+2. `block/Twins`: which bare block belongs to which leaf block, both ways.
+   The leaf clock gives a bare block the schedule of its leaf.
+3. Models: the bare blocks' block states point at the same model as their
+   leaves, so the leaf model wraps them too. A bare block asked without the
+   model's data (Dynamic Trees' falling tree) draws nothing.
+4. `world/LeafWalker`: on the server, after each step of the leaf clock and
+   whenever a chunk starts to tick, brings chunks up to date. Per chunk:
+   skip sections whose palette has none of our blocks (outside the two
+   windows: none of the wrong kind), else look at each block, work out the
+   stage and swap if needed. A few chunks a tick, nearest to players first,
+   with limits on chunks, changed blocks and time per tick (settings).
+5. Quiet write: `LevelChunk.setBlockState(pos, state, false)`, then
+   `ServerChunkCache.blockChanged(pos)` and `PathTypeCache.invalidate(pos)`.
+   Never `Level.setBlock`, never neighbor or shape updates. Snow lying on a
+   leaf that becomes bare goes with it.
+6. Dynamic Trees fitting: species accept their bare blocks
+   (`addValidLeafBlocks`); a season manager so that trees do not grow in
+   winter; nothing drops from bare blocks when a tree is cut.
+7. Distant Horizons: far crowns stay full (the API event that stores the
+   leaf instead of the bare block), only if Distant Horizons is there.
+8. Settings (`foliage-common.toml`, section `bareBranches`): on or off,
+   chunks per tick, changes per tick, milliseconds per tick.
+9. Game tests and self test (below).
+
 ### Tricky spots, stage 3
 
-- **Proof 1:** Dynamic Trees accepts the placeholder (second
-  `LeavesProperties` of the same family, block built without
-  `forceSolidOn`): twigs keep support through many tree updates, no leaves
-  grow into the spot, hydration stays right, cutting a branch removes them.
-  Fallback: one mixin for the rot rule.
-- **Proof 2:** a chunk left unsaved between nights comes back identical
-  after unload and reload (the swap is a pure function of the date).
-- Quiet write only: `LevelChunk.setBlockState(pos, state, false)`,
-  `ServerChunkCache.blockChanged(pos)`, `PathTypeCache.invalidate(pos)`.
-  Never `Level.setBlock`, never neighbor or shape updates.
-- After changes to a chunk that is not sent yet, call
-  `ChunkMap.waitForLightBeforeSending`.
-- Clients redo light on their render thread with no budget: feed changes
-  slowly (blocks per tick cap), also after a time jump.
-- `updateHydro` wipes extra properties unless
-  `getLeavesBlockStateForPlacement` carries them; new leaves grown in the
-  bare months must become placeholders.
-- The leaf block's default state must be a full leaf (Distant Horizons falls
-  back to it for unknown stored states).
-- Two loot tables per leaf kind (`blocks/<leaf>`, `trees/leaves/<name>`).
-- Snow lying on a leaf that becomes a placeholder must go with it.
+- **Only chunks that tick.** `ServerChunkCache.blockChanged` sends a change
+  to the players only for a ticking chunk. A change made in a chunk that is
+  loaded but does not tick would never reach the clients, and their copy of
+  the world would differ from the server's for good. The walker asks
+  `isPositionTicking` first and takes a chunk up again when it starts to
+  tick. Land that is in view but too far to tick keeps its old light until
+  someone comes near; its look is right all the same.
+- **Dynamic Trees must see leaves.** A bare block is a `DynamicLeavesBlock`
+  of the same family: it holds up its twig (`branchSupport`), passes water
+  to the leaves beyond it (`getHydrationCell` with the kind's own cell kit,
+  or the leaves behind a bare spot dry out and are removed), and no leaf
+  grows into it (`isLocationSuitableForNewLeaves` refuses any
+  `DynamicLeavesBlock`). To prove in a game test before anything else:
+  many tree updates on a bare tree leave every twig and every bare block in
+  place, and hydration numbers do not change.
+- **Leaves that Dynamic Trees places in the bare months** (growth, a
+  sapling becoming a tree, hydration updates that set the leaf state anew)
+  are real leaves at first. The walker makes them bare at its next pass;
+  outside the two windows it still passes over every ticking chunk at each
+  step, where it only has to look at palettes.
+- `DynamicLeavesBlock.getShadeBrightness` is fixed at 0.2 and
+  `entityInside` slows whoever is in the block: both overridden.
+- Leaves are water-loggable: water that reaches a bare block water-logs it
+  and does not wash it away. Kept; the leaf it turns back into is
+  water-logged too and Dynamic Trees deals with it as before.
+- Clients redo light on their render thread with no budget: the limit on
+  changed blocks per tick is what protects them, also after a time jump.
+- With the leaf calendar switched off, or a kind taken off the list, the
+  walker turns bare blocks back into leaves as chunks come to tick. That is
+  also the way out before the mod is removed (`/foliage restore` in stage 4
+  for land nobody visits).
+- The leaf block's default state must stay a full leaf (Distant Horizons
+  falls back to it for unknown stored states).
+- The leaf and its bare block must agree on "is there a winter here": both
+  sides read the biome without the game's fuzzy borders
+  (`getNoiseBiome`), the server from the chunk itself.
 
 ## Tests
 
