@@ -175,29 +175,59 @@ public final class TreeYearGameTests {
     }
 
     /**
-     * A leaf block of a tree with nothing but air under it, and with air
-     * above it: a spot where something can be put on top and fall
-     * through when the leaf goes.
+     * A leaf block of a tree with nothing but air under it for at least
+     * two blocks: a spot where fruit can hang, and where something that
+     * lay on the leaf can fall when the leaf goes.
+     *
+     * <p>A crown of limbs in layers is closed like a dome: a leaf block
+     * that is open to the sky has leaves under it, and one that is open
+     * to the ground has leaves above it. When snow has to lie on the
+     * leaf ({@code openAbove}) and no leaf block of the tree is open both
+     * ways, the test makes such a spot: it takes the leaf blocks out from
+     * under the outermost leaf block that is open to the sky. That
+     * changes the test's tree, not what is tested (what the walker does
+     * with the things on and under one leaf block).</p>
+     *
+     * @param openAbove whether there must be air above the leaf block too
      */
-    private static BlockPos freeLeafOf(Tree tree) {
+    private static BlockPos freeLeafOf(Tree tree, boolean openAbove) {
+        ServerLevel level = tree.level;
         BlockPos best = null;
         int bestBelow = 0;
-        for (Map.Entry<BlockPos, BlockState> spot : crown(tree).entrySet()) {
-            BlockPos at = spot.getKey();
-            if (!tree.level.getBlockState(at.above()).isAir()) {
+        BlockPos outermost = null;
+        int outermostReach = -1;
+        for (BlockPos at : crown(tree).keySet()) {
+            if (openAbove && !level.getBlockState(at.above()).isAir()) {
                 continue;
             }
             int free = 0;
-            while (tree.level.getBlockState(at.below(free + 1)).isAir()) {
+            while (level.getBlockState(at.below(free + 1)).isAir()) {
                 free++;
             }
             if (free > bestBelow) {
                 bestBelow = free;
                 best = at;
             }
+            int reach = Math.max(Math.abs(at.getX() - tree.root.getX()), Math.abs(at.getZ() - tree.root.getZ()));
+            if (reach > outermostReach) {
+                outermostReach = reach;
+                outermost = at;
+            }
         }
-        check(best != null && bestBelow >= 2, "the test's tree has a leaf block with air above it and under it");
-        return best;
+        if (bestBelow >= 2) {
+            return best;
+        }
+        check(openAbove && outermost != null, "the test's tree has a leaf block with air under it");
+        // Make the spot: clear the leaves under the outermost leaf block that is open to the sky.
+        // Flags 2 | 16: tell the clients, do not wake the neighbors (no leaf is to react to this).
+        BlockPos under = outermost.below();
+        while (level.getBlockState(under).getBlock() instanceof DynamicLeavesBlock) {
+            level.setBlock(under, Blocks.AIR.defaultBlockState(), 2 | 16);
+            under = under.below();
+        }
+        check(level.getBlockState(outermost.below(1)).isAir() && level.getBlockState(outermost.below(2)).isAir(),
+                "there is air under the test's leaf block after the leaves under it were taken out, not wood");
+        return outermost;
     }
 
     // ------------------------------------------------------------------
@@ -359,7 +389,7 @@ public final class TreeYearGameTests {
         ServerLevel level = helper.getLevel();
         Tree tree = Tree.plant(helper, "dynamictrees:apple_oak", Tree.storedCode("dynamictrees:apple_oak", 0));
         try {
-            BlockPos leaf = freeLeafOf(tree);
+            BlockPos leaf = freeLeafOf(tree, false);
             BlockPos under = leaf.below();
             // An apple, as Dynamic Trees hangs one: right under a leaf of the tree.
             Fruit apple = Fruit.REGISTRY.get(ResourceLocation.parse("dynamictrees:apple"));
@@ -392,13 +422,21 @@ public final class TreeYearGameTests {
         }
     }
 
-    /** Snow that lay on a leaf block falls to what is under it when the spot goes bare. */
-    @GameTest(template = "empty", batch = "foliage_tree_year", timeoutTicks = 400)
+    /**
+     * Snow that lay on a leaf block falls to what is under it when the spot goes bare.
+     *
+     * <p>Under the open sky and in a batch of its own: the tree has to
+     * stand whole to have a leaf block that is open to the sky (under a
+     * test's lid a tree is cut off, and every leaf block left has the lid
+     * or a leaf above it), and a whole crown reaches over the test areas
+     * next to it.</p>
+     */
+    @GameTest(template = "empty", batch = "foliage_tree_year_snow", timeoutTicks = 400, skyAccess = true)
     public static void snowFallsWithTheLeaves(GameTestHelper helper) {
         ServerLevel level = helper.getLevel();
         Tree tree = Tree.plant(helper, "dynamictrees:oak", Tree.storedCode("dynamictrees:oak", 0));
         try {
-            BlockPos leaf = freeLeafOf(tree);
+            BlockPos leaf = freeLeafOf(tree, true);
             BlockPos above = leaf.above();
             level.setBlock(above, Blocks.SNOW.defaultBlockState(), 3);
             check(level.getBlockState(above).getBlock() instanceof SnowLayerBlock, "snow lies on the leaf block");
@@ -438,7 +476,7 @@ public final class TreeYearGameTests {
         ServerLevel level = helper.getLevel();
         Tree tree = Tree.plant(helper, "dynamictrees:apple_oak", Tree.storedCode("dynamictrees:apple_oak", 0));
         try {
-            BlockPos leaf = freeLeafOf(tree);
+            BlockPos leaf = freeLeafOf(tree, false);
             BlockPos under = leaf.below();
             LeafWalker.fixClock(clockOn(Season.WINTER, 1));
             LeafWalker.setSettings(new WalkSettings(true, 4096, 65536, 50.0));

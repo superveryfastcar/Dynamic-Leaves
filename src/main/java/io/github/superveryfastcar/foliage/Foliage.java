@@ -6,6 +6,7 @@ import io.github.superveryfastcar.foliage.command.FoliageCommand;
 import io.github.superveryfastcar.foliage.compat.DistantHorizons;
 import io.github.superveryfastcar.foliage.network.FoliageNetwork;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
+import io.github.superveryfastcar.foliage.tree.LayeredLimbs;
 import io.github.superveryfastcar.foliage.world.LeafWalker;
 import io.github.superveryfastcar.foliage.world.Restore;
 import io.github.superveryfastcar.foliage.world.TreeSeasons;
@@ -73,6 +74,8 @@ import org.slf4j.Logger;
  *       belongs to.</li>
  *   <li>{@code world} package: swaps leaf blocks and bare blocks on the
  *       server, and tells Dynamic Trees what the season is.</li>
+ *   <li>{@code tree} package: the shape of the trees' own limbs (level
+ *       limbs in layers), for trees in new land and trees that grow.</li>
  *   <li>{@code network} package: sends the world's rules to the players.</li>
  *   <li>{@code command} package: the command {@code /foliage}.</li>
  *   <li>{@code compat} package: the link to Distant Horizons.</li>
@@ -139,6 +142,10 @@ public final class Foliage {
         }));
         NeoForge.EVENT_BUS.addListener((ServerAboutToStartEvent event) -> TreeSeasons.install());
 
+        // The shape of the trees' own limbs: stored shapes and a growth
+        // rule for limbs in layers (see the tree package).
+        LayeredLimbs.register(modBus, NeoForge.EVENT_BUS);
+
         // The link to Distant Horizons, if it is installed: far crowns
         // keep their leaves all year.
         modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(DistantHorizons::init));
@@ -160,6 +167,7 @@ public final class Foliage {
             return;
         }
         LeafWalker.setSettings(FoliageConfig.walkSettings());
+        LayeredLimbs.settingChanged();
         if (!LeafCalendar.setServerSettings(FoliageConfig.seasonSettings())) {
             return;
         }

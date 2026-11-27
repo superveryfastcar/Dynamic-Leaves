@@ -93,6 +93,9 @@ public final class FoliageConfig {
     /** Whether trees grow, drop seeds and bear fruit in winter too. */
     public static final ModConfigSpec.BooleanValue GROWTH_IN_WINTER;
 
+    /** Whether trees get limbs in layers. */
+    public static final ModConfigSpec.BooleanValue LAYERED_LIMBS;
+
     static {
         SeasonSettings standard = SeasonSettings.DEFAULT;
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -193,6 +196,13 @@ public final class FoliageConfig {
                                      "and fruit that still hangs withers. Only where there is a winter.",
                                      "Needs seasonSource.")
                 .define("growthInWinter", false);
+        LAYERED_LIMBS = b.comment("true: oaks and birches get limbs in layers, as on a real tree: level limbs that leave the",
+                                  "trunk at many heights, each with side limbs, instead of branches that climb.",
+                                  "This goes for trees planted with new land and for trees that grow from a seed.",
+                                  "Trees that already stand keep their wood; those that still grow, grow on level.",
+                                  "false: the trees are shaped as Dynamic Trees shapes them.",
+                                  "Which trees: those with a file in a data pack under tree_shapes (see the README).")
+                .define("layeredLimbs", true);
         b.pop();
 
         SPEC = b.build();
@@ -233,6 +243,11 @@ public final class FoliageConfig {
     /** Whether trees grow, drop seeds and bear fruit in winter too, as the file has it now. */
     public static boolean growthInWinter() {
         return SPEC.isLoaded() && GROWTH_IN_WINTER.get();
+    }
+
+    /** Whether trees get limbs in layers, as the file has it now. */
+    public static boolean layeredLimbs() {
+        return SPEC.isLoaded() ? LAYERED_LIMBS.get() : true;
     }
 
     /** How easily fire eats a bare block, as the file has it now (the game's "flammability"). */

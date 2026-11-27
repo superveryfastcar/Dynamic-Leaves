@@ -341,7 +341,7 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             if (clump != 0) {
                 LeafPicture clumpPicture = LeafPicture.forClump(stage);
                 if (Recipe.tuft(recipe)) {
-                    addAll(body, tuft(clumpPicture, clump, grow, MiniBranch.tuftEnd(base, variant, clump)));
+                    addAll(body, tuft(clumpPicture, clump, grow, MiniBranch.tuftEnd(base, variant, clump, MiniBranch.upright(grow))));
                 } else {
                     Direction anchor = Recipe.anchor(recipe);
                     BakedQuad[] faces = clump(clumpPicture, clump, anchor);
@@ -422,7 +422,7 @@ public final class LeafModel extends BakedModelWrapper<BakedModel> {
             BakedQuad[][] row = branches[grow.ordinal()][base][variant];
             if (row[forks] == null) {
                 List<BakedQuad> quads = new ArrayList<>(MiniBranch.faceCount(base, forks));
-                for (MiniBranch.Box box : MiniBranch.boxes(base, variant, forks)) {
+                for (MiniBranch.Box box : MiniBranch.boxes(base, variant, forks, MiniBranch.upright(grow))) {
                     addAll(quads, QuadMaker.box(sprites.bark(), box, grow));
                 }
                 row[forks] = quads.toArray(BakedQuad[]::new);

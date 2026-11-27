@@ -231,20 +231,27 @@ public final class FoliageGameTests {
      * The boxes of a mini branch: one main twig that comes out of the
      * wood, thinner twigs that leave it at right angles in different
      * directions, the faces that are counted are the faces that are
-     * there, and no face lies in a plane a clump of leaves could have a
-     * face in.
+     * there, no face lies in a plane a clump of leaves could have a
+     * face in, and one that stands upright is the short kind.
      */
     @GameTest(template = "empty", batch = "foliage_rules")
     public static void miniBranchBoxes(GameTestHelper helper) {
         int[] bases = {MiniBranch.FLUSH, MiniBranch.REACH, MiniBranch.DEEP};
         Set<String> looks = new java.util.HashSet<>();
-        for (int base : bases) {
+        check(MiniBranch.upright(Direction.UP) && MiniBranch.upright(Direction.DOWN) && !MiniBranch.upright(Direction.NORTH)
+                && !MiniBranch.upright(Direction.EAST), "a mini branch that grows up or down is the upright kind, a level one is not");
+        // Both kinds of every start: the level one, and the short one that stands upright.
+        for (int kind = 0; kind < bases.length * 2; kind++) {
+            int base = bases[kind >> 1];
+            boolean upright = (kind & 1) != 0;
             boolean deep = base == MiniBranch.DEEP;
+            // The short kind is for mini branches that start at the wood; the link of a chain is the same both ways.
+            boolean shortKind = upright && !deep;
             float thick = deep ? 1.0F : 2.0F;
             for (int variant = 0; variant < Recipe.VARIANTS; variant++) {
                 for (int wanted = 0; wanted <= MiniBranch.MAX_FORKS; wanted++) {
-                    String what = "start " + base + " variant " + variant + " wanted " + wanted;
-                    List<MiniBranch.Box> boxes = MiniBranch.boxes(base, variant, wanted);
+                    String what = "start " + base + (upright ? " upright" : " level") + " variant " + variant + " wanted " + wanted;
+                    List<MiniBranch.Box> boxes = MiniBranch.boxes(base, variant, wanted, upright);
                     int forks = Math.min(wanted, deep ? MiniBranch.DEEP_FORKS : MiniBranch.MAX_FORKS);
                     check(MiniBranch.forks(base, wanted) == forks && boxes.size() == 1 + forks, "a main twig and " + forks + " thinner ones: " + what);
                     int faces = 0;
@@ -259,17 +266,30 @@ public final class FoliageGameTests {
                     check(stem.x1() - stem.x0() == thick && stem.z1() - stem.z0() == thick && stem.x0() + stem.x1() == 16.0F && stem.z0() + stem.z1() == 16.0F,
                             "it is " + thick + " thick and stands in the middle of the block's side: " + what);
                     float from = base == MiniBranch.REACH ? -MiniBranch.REACH_BACK : deep ? -MiniBranch.DEEP_BACK : 0.0F;
-                    check(stem.y0() == from && stem.y1() == MiniBranch.length(base, variant), "it starts where its kind starts and ends at its length: " + what);
-                    check(stem.y1() >= 8.0F && stem.y1() <= 13.0F, "it reaches past the middle of the block and stays inside it: " + what);
+                    check(stem.y0() == from && stem.y1() == MiniBranch.length(base, variant, upright), "it starts where its kind starts and ends at its length: " + what);
+                    if (shortKind) {
+                        // The owner's rule: nothing goes straight up for more than about two thirds of a block.
+                        // What stands on a limb is its stub or the gap to its bark, then the main twig. The
+                        // thinnest limb has a stub of seven pixels; the thinnest limb without a stub (two
+                        // pixels from its middle to its bark) leaves six pixels to the block's side.
+                        float below = base == MiniBranch.REACH ? 6.0F : 7.0F;
+                        check(stem.y1() >= 1.0F && below + stem.y1() >= 8.0F && below + stem.y1() <= 32.0F / 3.0F,
+                                "an upright mini branch stands half to two thirds of a block above its limb, got " + (below + stem.y1()) + " pixels: " + what);
+                    } else {
+                        check(stem.y1() >= 8.0F && stem.y1() <= 13.0F, "it reaches past the middle of the block and stays inside it: " + what);
+                    }
                     check(!stem.has(Direction.DOWN) && stem.has(Direction.UP), "its near end is in the wood and not drawn, its far end is: " + what);
 
                     // The thinner twigs.
                     Set<Direction> ways = new java.util.HashSet<>();
-                    StringBuilder look = new StringBuilder().append(base);
+                    StringBuilder look = new StringBuilder().append(kind);
                     for (int i = 1; i < boxes.size(); i++) {
                         MiniBranch.Box fork = boxes.get(i);
                         check(fork.along() != 1 && fork.strip() == i, "a thinner twig lies across the main twig and shows a strip of bark of its own: " + what);
-                        check(fork.y1() - fork.y0() == 1.0F && fork.y0() > 0.0F && fork.y1() < stem.y1(), "it is one pixel thick and leaves the main twig below its end: " + what);
+                        // On an upright one the thinner twigs are spread over the limb's stub too, so they may
+                        // leave below the block's side: two pixels clear of the bark of the thinnest limb.
+                        float lowest = !shortKind ? 0.0F : base == MiniBranch.REACH ? -4.0F : -5.0F;
+                        check(fork.y1() - fork.y0() == 1.0F && fork.y0() > lowest && fork.y1() < stem.y1(), "it is one pixel thick and leaves the main twig below its end: " + what);
                         boolean alongX = fork.along() == 0;
                         float length = alongX ? fork.x1() - fork.x0() : fork.z1() - fork.z0();
                         float width = alongX ? fork.z1() - fork.z0() : fork.x1() - fork.x0();
@@ -318,9 +338,9 @@ public final class FoliageGameTests {
                 }
                 // The clump on the end of the main twig holds that end and stays inside the block.
                 for (int size = ShapeSettings.MIN_BUD; size <= ShapeSettings.MAX_CLUMP; size++) {
-                    int end = MiniBranch.tuftEnd(base, variant, size);
-                    float length = MiniBranch.length(base, variant);
-                    check(end <= 16 && end - size >= 0, "a clump of " + size + " on the main twig stays inside the block: start " + base + " variant " + variant);
+                    int end = MiniBranch.tuftEnd(base, variant, size, upright);
+                    float length = MiniBranch.length(base, variant, upright);
+                    check(end <= 16 && end - size >= 0, "a clump of " + size + " on the main twig stays inside the block: start " + base + " variant " + variant + (upright ? " upright" : ""));
                     check(end > length && end - size < length, "and holds the end of the main twig: start " + base + " variant " + variant + " size " + size);
                 }
             }
@@ -330,7 +350,7 @@ public final class FoliageGameTests {
                     && stick.y1() == 7.0F && stick.y0() == (base == MiniBranch.REACH ? -MiniBranch.REACH_BACK : 0.0F), "a stick has four sides and no ends");
         }
         // Sixteen variants give sixteen different mini branches of each kind.
-        check(looks.size() == bases.length * Recipe.VARIANTS, "every variant gives another mini branch, got " + looks.size() + " different ones");
+        check(looks.size() == bases.length * 2 * Recipe.VARIANTS, "every variant gives another mini branch, level and upright, got " + looks.size() + " different ones");
         check(MiniBranch.STEM_FACES == 5 && MiniBranch.FORK_FACES == 4 && MiniBranch.faceCount(MiniBranch.FLUSH, 3) == 17,
                 "a whole mini branch is drawn from seventeen faces");
         helper.succeed();
@@ -924,6 +944,16 @@ public final class FoliageGameTests {
                             .withCallback((success, value) -> succeeded[0] = success),
                     "dt settree " + root.getX() + " " + root.getY() + " " + root.getZ() + " " + species + " " + code + " 0 " + fertility);
             check(succeeded[0], "Dynamic Trees plants a " + species);
+            return at(level, species, root);
+        }
+
+        /**
+         * A tree that already stands, planted by whatever means, with its
+         * leaf blocks found.
+         *
+         * @param root the block the tree stands on
+         */
+        static Tree at(ServerLevel level, String species, BlockPos root) {
             Tree tree = new Tree(level, species, root);
             BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
             for (int y = 0; y <= HEIGHT; y++) {

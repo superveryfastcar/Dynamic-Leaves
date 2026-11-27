@@ -786,6 +786,169 @@ Claude's own decisions in 0.5.0, for Lucas to overrule:
   thinner twigs appear with the last leaves, when the clump has drawn back
   to a tuft and they could be seen.
 
+### Limbs in layers: plan (2026-11-27, for 0.6.0)
+
+**The owner's words (fixed).** On the 0.5.0 pictures: "the large branches
+kind of spread in wierd directions. like more than one block up is not
+natural, id rather you add more from the base." "like model it after real
+trees, while maintaining the fulness of the leaves of what you had just
+now". With two sketches: a trunk with level branches leaving it at many
+heights on both sides ("Dont take the density to literally, but its to
+show how you should layer the branches") and "a main branch with sub
+branches branching of it, each with leaves in them". On Claude's sketch
+of that reading: "Yes, build this but also make sure it looks good from a
+3 perspective. Dont force every single space to be filled by leaves like
+in sketch 2 but the tree should have volume still." "Like the volume in
+you first build was good" (the crowns of 0.5.0, which are Dynamic Trees'
+own). The small twigs inside leaf blocks stay as they are in 0.5.0.
+Separately: leaves "should thin from the outer parts of the texture more"
+(built, branch `thin-from-the-outside`).
+
+**What that means in Dynamic Trees.** The tree's wood is Dynamic Trees'
+own. Three kinds of trees exist: trees planted in new land (a stored
+shape, never grows), trees grown from a seed (shaped step by step by the
+species' growth logic kit), and trees that already stand (never change;
+nothing to build).
+
+**Parts, in order.**
+
+1. `tools/limbs/` (Python, Fable): `jocode.py` reads and writes Dynamic
+   Trees' tree codes and models thickness and leaves; `layers.py` makes
+   trees with limbs in layers; `preview.py` draws them. Complicated: the
+   shape is judged by eye and has to keep Dynamic Trees' rule that wood
+   never touches other wood.
+2. `dev/DevTreeShow` (Fable, small): plants listed codes in the real
+   game and photographs them, so shapes are judged in the game, not in a
+   drawing. **Stop here and show the owner one oak before going on.**
+3. Stored shapes: `trees/dynamictrees/jo_codes/oak.txt` and `birch.txt`
+   at the root of the jar, written by `layers.py write`, the same number
+   of shapes per radius as Dynamic Trees has. Not complicated once 1 is
+   right. To check: that Foliage's tree pack wins over Dynamic Trees' own
+   file, and that swamp oak, apple oak and tall birch (own code files in
+   Dynamic Trees) are either left alone on purpose or get shapes too.
+4. Growth for trees from seeds: a growth logic kit `foliage:layered`
+   (off the trunk a branch never goes up or down, as Dynamic Trees' dark
+   oak does it) named in replaced species files for oak and birch.
+   Complicated enough for Fable: species files can only be replaced
+   whole, and the kit changes every oak and birch that still grows.
+5. A setting to turn the new shapes off (`layeredLimbs`), game tests,
+   self test, measurements, README and changelog (Opus), then a separate
+   Fable review of whatever Opus wrote.
+
+**Tricky spots.**
+
+- Wood that touches other wood grows together: limbs on heights right
+  above each other must point different ways. `TreeBuilder.grow` refuses
+  such blocks, so the generator cannot write a code the game rejects.
+- Every branch end gets a 5x4x5 leaf cluster. Volume is steered by where
+  ends are, not by adding leaves: compare leaf counts per radius with
+  Dynamic Trees' own (oak 118, 180, 225, 300, 342, 376, 368 for radius 2
+  to 8) and stay near them.
+- Many limbs make a thick trunk foot (thickness is the square root of
+  the summed squares of what hangs on a block).
+- Dark oak's limbs are level already (no steps up off the trunk in its
+  stored shapes): leave it.
+- The self test and several game tests plant "the largest stored shape"
+  of a species and compare counts: new code files change those numbers.
+
+**To test.** Every written code decodes to the tree it was made from and
+has no wood touching other wood (Python check when writing, game test
+that plants every stored shape and finds it whole); no branch block off
+the trunk has wood under it more than once per limb; leaf counts per
+radius within a set share of Dynamic Trees' own; the growth kit never
+picks up or down off the trunk (game test growing a tree with bone meal
+pulses); the setting off gives Dynamic Trees' shapes back.
+
+### Limbs in layers as built (2026-11-27, 0.6.0)
+
+**The owner's words on the first pictures from the game (fixed).** "Id
+say the branches going straight up should probably only be half or
+2/3rds of a block it looks weird as it is now. Otherwise the tree loks
+pretty great to me." "The medium one has a weird protruding branch. I
+consider that a bug and it should be eliminated." "If that protruding
+branch was one block shorter itd be fine, i think". Asked whether he
+meant the upright small twigs or the one-block step of a limb: "I cannot
+make out a difference between A and B". So both: nothing on the tree goes
+straight up for more than about two thirds of a block.
+
+**What was built, and where it differs from the plan.**
+
+- **Shapes are data files of the mod's own, not a tree pack override**
+  (plan part 3). `LayeredLimbs` reads
+  `data/<any>/tree_shapes/<species namespace>/<species>.txt` in a reload
+  listener that runs right after Dynamic Trees' own, copies all codes out
+  of `JoCodeRegistry`, clears it and registers them again with the mod's
+  shapes in the place of Dynamic Trees' for those species. That way the
+  setting can give Dynamic Trees' shapes back while the game runs, no
+  file of Dynamic Trees is replaced whole, and a data pack can add
+  species. 20 shapes per radius 2 to 8 for oak, apple oak, swamp oak
+  (oak's numbers), birch and tall birch.
+- **The growth rule is set in code, not in replaced species files** (plan
+  part 4): every species with a shape file gets `foliage:layered`
+  (`Species.setGrowthLogicKit`), and gets its own back when the setting
+  is turned off. The rule takes Dynamic Trees' weights and, off the
+  trunk, sets up and down to zero unless wood is there already.
+- **No step up at all.** The plan let a limb step up one block once.
+  After the owner's words above the generator makes every limb level,
+  `layers.py write` refuses a shape with wood on wood off the trunk, and
+  the game test demands zero.
+- **No limb sticks out from under the crown.** In the lower half of the
+  crown a limb is at most one block longer than what covers it from
+  above (the limb two heights up on its side, the limb four heights up
+  less one, or two blocks for the side limbs of the turned layer right
+  above). The upper half is the roof and narrows by itself. Layers with
+  a limb on one side only are rarer than first built (oak 1 in 10), and
+  the crown's outline starts at 0.7 of the reach at the lowest layer.
+- **Ends without leaves are cut back in the tool.** Dynamic Trees lets a
+  branch end rot when no leaf is next to it and smothers leaves deep in
+  a crown; `jocode.leaves` models stamping, smothering and three rounds
+  of aging, and the generator cuts bare ends until none is left.
+- **Short upright mini branches** (`shape/MiniBranch`, `upright`): a
+  mini branch that grows straight up or down has a main twig of 1 to 3
+  pixels (2 to 4 from inside a thicker limb) instead of 9 to 12, with
+  its thinner twigs spread over the limb's stub below the block's side.
+  With the stub that is 8 to 10 pixels of upright wood. The chain link
+  of the "more twigs" setting (`DEEP`) is unchanged. Known and accepted
+  for now: a limb with a leaf spot above and one below shows the two
+  upright mini branches in one line, about 1.2 blocks from end to end,
+  because both stubs are Dynamic Trees' own.
+- `dev/DevTreeShow` and `tools/limbs/layers.py show` as planned, with
+  cameras that stand further back for taller trees and a close view.
+
+**Claude's own decisions the owner may overrule.** Twigs that hang
+straight down are short like those that stand up. Tall birch, apple oak
+and swamp oak get shapes too. Dark oak is left alone. The cover rule
+makes a long low limb shorter instead of adding a limb above it.
+
+**Found on the way.**
+
+- A game test's area (the `empty` template, 7 by 4 by 7) is walled in
+  with barriers five blocks high, four blocks from the middle. A limb
+  four blocks long below the wall's top ends inside the wall and Dynamic
+  Trees leaves that piece out. This looked like rot for a while. The
+  tests that compare a tree with its code plant it on a block of soil
+  six blocks up.
+- `/dt settree` gives every tree radius 8, turns the shape, and lets
+  ends rot partly at random. To plant exactly as new land does:
+  `species.getJoCode(code).setCareful(false).generate(new
+  DynamicTreeGenerationContext(..., radius, true))`.
+- A crown of limbs in layers is closed like a dome: no leaf block is
+  open both to the sky and to the ground. The snow test makes such a
+  spot (it takes out the leaves under an outer leaf block), under the
+  open sky and in a batch of its own; the fruit tests only need air
+  under a leaf.
+- Vanilla applies reload listeners in the order they were added; adding
+  at `EventPriority.LOWEST` puts Foliage's after Dynamic Trees'.
+
+**Tests.** Eight in `LayeredLimbsGameTests` (66 in all): shape files read
+as written; the rule off the trunk; Dynamic Trees holds exactly the
+mod's shapes and the species grow by the rule; 15 stored shapes each of
+oak, birch and tall birch planted as new land stand as their code says,
+with no wood on wood off the trunk, no limb sticking out, limbs on four
+heights or more and a crown; a young oak grown with 200 pulses has level
+limbs only; the setting off and on. `miniBranchBoxes` covers the upright
+kind.
+
 ## Tests
 
 - **Game tests** (`./gradlew runGameTestServer`): the rules as pure checks,

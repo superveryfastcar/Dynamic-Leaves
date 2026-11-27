@@ -182,6 +182,53 @@ leaves cost about as much as light rain.
 
 ---
 
+## The trees with limbs in layers (0.6.0)
+
+The owner asked for the fullness of Dynamic Trees' own crowns. So the
+shapes are held against Dynamic Trees' stored shapes, tree size by tree
+size (the "radius" is the room Dynamic Trees gives a tree, 2 to 8).
+
+**How they were taken.** Both rows of each pair are counted the same way,
+by `tools/limbs/jocode.py`: it reads a tree code into wood and then does
+what Dynamic Trees does to give it leaves (a cluster on every branch
+end, leaves taken out deep inside the crown, three rounds of aging). The
+numbers are the mean over a kind's stored shapes of that size: 16 per
+size in Dynamic Trees for oak and birch and 20 for tall birch, 20 per
+size in Foliage. The game tests plant 45 of Foliage's shapes and find
+their wood block for block as the tool says; the leaf counts were not
+counted again in the game for this version.
+
+Leaf blocks per tree:
+
+| Kind | Whose shapes | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Oak | Dynamic Trees | 118 | 180 | 225 | 300 | 342 | 376 | 368 |
+| Oak | Foliage | 120 | 195 | 239 | 308 | 336 | 369 | 382 |
+| Birch | Dynamic Trees | 121 | 173 | 215 | 269 | 334 | 318 | 331 |
+| Birch | Foliage | 121 | 157 | 237 | 264 | 315 | 315 | 304 |
+| Tall birch | Dynamic Trees | 104 | 151 | 203 | 262 | 295 | 298 | 295 |
+| Tall birch | Foliage | 125 | 157 | 222 | 250 | 293 | 300 | 303 |
+
+Every size is within a tenth of Dynamic Trees' own, except the smallest
+tall birch (a fifth more leaves, on a tree of about 100 leaf blocks).
+
+Branch blocks per tree:
+
+| Kind | Whose shapes | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| Oak | Dynamic Trees | 18 | 30 | 38 | 54 | 66 | 71 | 71 |
+| Oak | Foliage | 20 | 37 | 43 | 56 | 64 | 73 | 75 |
+| Birch | Dynamic Trees | 23 | 32 | 41 | 57 | 74 | 71 | 71 |
+| Birch | Foliage | 23 | 39 | 53 | 59 | 68 | 68 | 60 |
+| Tall birch | Dynamic Trees | 28 | 43 | 48 | 67 | 84 | 85 | 85 |
+| Tall birch | Foliage | 32 | 48 | 57 | 66 | 72 | 74 | 72 |
+
+About the same wood, so about the same work for Dynamic Trees and the
+same number of branch blocks to draw. The faces per leaf block do not
+depend on the tree's shape in summer. A bare tree's upright small
+branches are drawn from as many faces as before (17 at most); they are
+only shorter.
+
 ## What is not measured here
 
 - **Frames.** This machine draws in software. Frames per second, and

@@ -43,6 +43,19 @@ import net.minecraft.core.Direction;
  *       a twig of the next spot would begin.</li>
  * </ul>
  *
+ * <h2>Shorter when it stands upright</h2>
+ * A mini branch that grows straight up or straight down is the short
+ * kind ({@code upright}). The owner's rule (2026-11-27): nothing on the
+ * tree goes straight up for more than about half to two thirds of a
+ * block. What is seen standing on a limb is the limb's own stub (from its
+ * bark to the block's side, seven pixels on the thinnest limb) and then
+ * the main twig, so an upright main twig goes only one to four pixels
+ * into its block: eight to ten pixels of upright wood in all. Its
+ * thinner twigs are spread over that whole height, so some of them leave
+ * the stub below the block's side (a height below zero). A level mini
+ * branch keeps its full length. The {@link #DEEP} kind is the same both
+ * ways: it is the link of a chain that the "more twigs" setting asks for.
+ *
  * <h2>Never in the same plane as a leaf</h2>
  * A leaf spot with a mini branch can carry a small cube of leaves at the
  * same time (the last leaves of autumn, the buds and first leaves of
@@ -135,6 +148,36 @@ public final class MiniBranch {
         {9, /* first */ 2, 3, 4, 1, /* second */ 5, 1, 4, 0, /* third */ 7, 2, 5, 0},
     };
 
+    /**
+     * The same for a mini branch that stands upright on a thin limb
+     * ({@link #FLUSH}, growing up or down): a main twig of one to three
+     * pixels on top of the limb's stub of seven, and thinner twigs of
+     * three or four pixels. A height below zero is on the stub, outside
+     * the block; the stub is as thick as the main twig, so the thinner
+     * twig sits on it just the same. The lowest is two pixels clear of
+     * the limb's bark.
+     */
+    private static final int[][] UPRIGHT_FLUSH_WAYS = {
+        {2, /* first */ -5, 0, 3, 0, /* second */ -2, 2, 4, 1, /* third */ 0, 1, 3, 0},
+        {1, /* first */ -5, 1, 3, 1, /* second */ -3, 3, 4, 0, /* third */ -1, 0, 3, 1},
+        {3, /* first */ -4, 2, 4, 0, /* second */ -1, 0, 3, 1, /* third */ 1, 3, 3, 1},
+        {2, /* first */ -4, 3, 3, 1, /* second */ -2, 1, 4, 0, /* third */ 0, 2, 3, 0},
+    };
+
+    /**
+     * And for one that stands upright on a thicker limb ({@link #REACH}).
+     * The limb's bark lies one to six pixels behind the block's side, so
+     * the main twig goes a pixel further in, and the thinner twigs leave
+     * it no lower than three pixels behind the side, where a limb up to
+     * ten pixels thick leaves them in view.
+     */
+    private static final int[][] UPRIGHT_REACH_WAYS = {
+        {3, /* first */ -3, 0, 3, 0, /* second */ -1, 2, 4, 1, /* third */ 1, 1, 3, 0},
+        {2, /* first */ -3, 1, 3, 1, /* second */ -1, 3, 4, 0, /* third */ 0, 0, 3, 1},
+        {4, /* first */ -3, 2, 4, 0, /* second */ 0, 0, 3, 1, /* third */ 2, 3, 3, 1},
+        {3, /* first */ -2, 3, 3, 1, /* second */ 0, 1, 4, 0, /* third */ 1, 2, 3, 0},
+    };
+
     /** The same for the thinner, shorter {@link #DEEP} kind: two twigs, and no "half" because the main twig is one pixel thick. */
     private static final int[][] DEEP_WAYS = {
         {/* first */ 2, 0, 3, /* second */ 5, 2, 4},
@@ -174,13 +217,37 @@ public final class MiniBranch {
     }
 
     /**
+     * Whether a mini branch that grows in a direction is the short,
+     * upright kind: one that grows straight up or straight down.
+     *
+     * @param grow the direction the main twig grows in
+     */
+    public static boolean upright(Direction grow) {
+        return grow.getAxis().isVertical();
+    }
+
+    /**
+     * The table a mini branch that starts at the wood is built from.
+     *
+     * @param base    {@link #FLUSH} or {@link #REACH}
+     * @param upright whether it grows straight up or down
+     */
+    private static int[][] ways(int base, boolean upright) {
+        if (!upright) {
+            return WAYS;
+        }
+        return base == REACH ? UPRIGHT_REACH_WAYS : UPRIGHT_FLUSH_WAYS;
+    }
+
+    /**
      * How far from the block's side the main twig ends, in pixels.
      *
      * @param base    where it starts
      * @param variant the position's variant, 0 to 15
+     * @param upright whether it grows straight up or down ({@link #upright})
      */
-    public static float length(int base, int variant) {
-        return base == DEEP ? DEEP_END : WAYS[variant >> 2 & 3][0] + OFF;
+    public static float length(int base, int variant, boolean upright) {
+        return base == DEEP ? DEEP_END : ways(base, upright)[variant >> 2 & 3][0] + OFF;
     }
 
     /**
@@ -193,11 +260,12 @@ public final class MiniBranch {
      * @param base    where the mini branch starts
      * @param variant the position's variant, 0 to 15
      * @param size    the side of the cube in pixels
+     * @param upright whether the mini branch grows straight up or down
      * @return how far the cube's far face is from the block's side the
      *         twig grows from, at least {@code size} and at most 16
      */
-    public static int tuftEnd(int base, int variant, int size) {
-        int end = Math.round(length(base, variant)) + 1;
+    public static int tuftEnd(int base, int variant, int size, boolean upright) {
+        int end = Math.round(length(base, variant, upright)) + 1;
         return Math.max(size, Math.min(16, end));
     }
 
@@ -210,8 +278,9 @@ public final class MiniBranch {
      *                four ways the twigs are set and one of four quarter
      *                turns
      * @param wanted  how many thinner twigs the player wants at most
+     * @param upright whether it grows straight up or down: the short kind
      */
-    public static List<Box> boxes(int base, int variant, int wanted) {
+    public static List<Box> boxes(int base, int variant, int wanted, boolean upright) {
         int turn = variant & 3;
         int way = variant >> 2 & 3;
         int count = forks(base, wanted);
@@ -225,7 +294,7 @@ public final class MiniBranch {
             return boxes;
         }
         float from = base == REACH ? -REACH_BACK : 0.0F;
-        int[] set = WAYS[way];
+        int[] set = ways(base, upright)[way];
         boxes.add(new Box(7.0F, from, 7.0F, 9.0F, set[0] + OFF, 9.0F, ALL_BUT_DOWN, 1, 0));
         for (int i = 0; i < count; i++) {
             int at = 1 + i * 4;
@@ -257,7 +326,8 @@ public final class MiniBranch {
      * @param near   where the main twig's sides are: its low side ...
      * @param far    ... and its high side, across both x and z
      * @param low    where the twig's own pixel starts, across the side it leaves
-     * @param height how high up the main twig it leaves
+     * @param height how high up the main twig it leaves (below zero: on
+     *               the limb's stub, outside the block)
      * @param way    which way it points: 0 toward higher x, 1 toward
      *               higher z, 2 toward lower x, 3 toward lower z
      * @param length how long it is

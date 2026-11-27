@@ -4,7 +4,7 @@ Leaves with depth for the trees of Dynamic Trees, and a year for them to live th
 
 Foliage is a mod for **Minecraft 1.21.1 on NeoForge** (built against NeoForge 21.1.267). It is an addon for [Dynamic Trees](https://modrinth.com/mod/dynamictrees) 1.7.2 and needs the [Calendar](https://github.com/superveryfastcar/Calendar) and Seasons mods.
 
-> **Version 0.5.0** makes the bare tree and the fall look right: a bare crown is small branches in the tree's own bark, built like the branches of Dynamic Trees; a leaf block gets smaller as its leaves fall and ends as a small tuft on a twig; and a leaf block that changes while you look at it lets a few leaves go. Before it, 0.4.0 gave the trees the rest of their year: leaves in the air, trees that rest in winter and bear fruit in season, snow that falls with the leaves, far crowns under Distant Horizons, and `/foliage restore`.
+> **Version 0.6.0** shapes the trees themselves after real trees: oak and birch get a straight trunk with level limbs in layers, each with side limbs, in place of branches that climb. Leaves thin from the outside of their picture, and the small branches of a bare tree that stand upright are short. Before it, 0.5.0 made the bare tree and the fall look right: a bare crown is small branches in the tree's own bark, built like the branches of Dynamic Trees; a leaf block gets smaller as its leaves fall and ends as a small tuft on a twig; and a leaf block that changes while you look at it lets a few leaves go. Before it, 0.4.0 gave the trees the rest of their year: leaves in the air, trees that rest in winter and bear fruit in season, snow that falls with the leaves, far crowns under Distant Horizons, and `/foliage restore`.
 >
 > **Every player needs Foliage to join a server that has it**, because the bare blocks are blocks of the mod. Read [Taking the mod out of a world](#taking-the-mod-out-of-a-world) before you remove it.
 
@@ -46,6 +46,27 @@ No two neighboring leaf blocks look alike: each position turns and shifts its pi
 
 All kinds of leaves that Dynamic Trees itself adds get the shapes: oak, birch, spruce, jungle, acacia, dark oak, mangrove, cherry, azalea and flowering azalea, with their undergrowth.
 
+### Limbs in layers
+
+Oak (with apple oak and swamp oak), birch and tall birch are shaped after real trees. The trunk is straight. Limbs leave it level, layer above layer, from low on the trunk to just under the top: the limbs of one layer run east and west, those of the next north and south. A limb carries side limbs at right angles, some with a bend at their end, and every end holds leaves.
+
+- **Nothing but the trunk goes up.** Off the trunk every piece of wood is level. A tree gets taller through its trunk only.
+- **No limb sticks out from under the crown.** In the lower half of a crown a limb is at most one block longer than what covers it from above.
+- **The crown keeps its volume.** A tree has about as many leaf blocks as the same tree of Dynamic Trees (within a tenth, see `docs/measurements.md`), without every space being filled.
+
+Two things do this, because the wood of a tree comes about in two ways:
+
+- **A tree that comes with new land** is put down whole from a stored shape. Foliage brings 140 shapes per kind, 20 for each of the seven sizes Dynamic Trees asks for, and Dynamic Trees picks from them as it picks from its own.
+- **A tree that grows from a sapling** grows by Foliage's rule `foliage:layered`: Dynamic Trees' own growth, except that a branch that has left the trunk only goes level.
+
+Trees that already stand keep their wood; those that still grow, grow on level. Dark oak, spruce, jungle, acacia and all other trees are left as Dynamic Trees shapes them. The setting [`layeredLimbs`](#the-rules-of-the-world-configfoliage-commontoml) turns all of it off.
+
+**For pack makers.** The shapes are data files, so a data pack can replace them or give other trees limbs in layers:
+
+- `data/<any namespace>/tree_shapes/<species namespace>/<species name>.txt`, for example `data/foliage/tree_shapes/dynamictrees/oak.txt`. One shape per line as `radius:code`, in the format of Dynamic Trees' own `jo_codes` files; lines that start with `#` are notes. A species with such a file gets these shapes in place of its own and grows by `foliage:layered`.
+- The growth rule alone can be named in a tree pack's species file: `"growth_logic_kit": "foliage:layered"`.
+- The mod's own files are written by `tools/limbs/layers.py` (see [For developers](#for-developers-of-foliage)).
+
 ### The leaf calendar
 
 Oak, birch and dark oak lose their leaves at the end of autumn and grow them back at the start of spring. The days are those of the Calendar mod, and the leaves follow them wherever Seasons says there is a winter (not in jungles, deserts or other places without one). Spruce, jungle, acacia, mangrove, cherry and azalea stay green.
@@ -54,11 +75,11 @@ Oak, birch and dark oak lose their leaves at the end of autumn and grow them bac
 
 - Kinds start on different days: birch first, oak a day later, dark oak a day after oak.
 - Trees of one kind start up to a day apart, depending on where they stand. Trees close to each other go together, so a forest thins in soft patches and not tree by tree at random.
-- One tree takes about 4 days. Its crown thins from the far edge inward, one leaf block after another, so the leaves draw back toward the branches. A leaf block first thins (about a third of its leaves gone). Then it gets smaller and draws back toward its branch, with about half of its leaves gone. Then it is a small tuft of last leaves on the end of a twig, and then it is gone.
+- One tree takes about 4 days. Its crown thins from the far edge inward, one leaf block after another, so the leaves draw back toward the branches. A leaf block first thins (about a third of its leaves gone), from the outside of its picture inward: the leaves at the rim go first and the middle stays dense to the end. Then it gets smaller and draws back toward its branch, with about half of its leaves gone. Then it is a small tuft of last leaves on the end of a twig, and then it is gone.
 - Last leaves only hang where there is something to hang on to: on a twig, or against a neighbor that is still in leaf. Nothing is left floating in the air.
 - On the last day of autumn every tree that sheds is bare.
 
-**Winter.** A bare crown is drawn as small branches: every leaf spot next to wood carries one, in the bark of its tree, and the rest is air. That is 3 to 4 faces per leaf block instead of the 6 of the unmodded game. `winterTwigs` and `twigForks` set how many there are; with `winterTwigs = NONE` a bare crown costs next to nothing.
+**Winter.** A bare crown is drawn as small branches: every leaf spot next to wood carries one, in the bark of its tree, and the rest is air. That is 3 to 4 faces per leaf block instead of the 6 of the unmodded game. A small branch that grows level is 9 to 12 pixels long; one that stands straight up or hangs straight down is the short kind, so that nothing on a limb stands more than about half to two thirds of a block high. `winterTwigs` and `twigForks` set how many there are; with `winterTwigs = NONE` a bare crown costs next to nothing.
 
 **Spring.** The leaves come back during the first 7 days of spring, in the same order of kinds and patches. A tree first shows buds for a day: a small light green knot on the end of every main twig. Then small, light leaves come out there and spread outward: first a small tuft, then a half-grown clump, then the full crown. On day 7 every tree is in full leaf.
 
@@ -234,6 +255,7 @@ If the fall or the return is set longer than autumn or spring are in the Calenda
 | --- | --- | --- |
 | `seasonSource` | `true` | `true`: Foliage tells Dynamic Trees what the season is, so its trees rest in winter and bear fruit in season. `false`: Dynamic Trees is left as it is. |
 | `growthInWinter` | `false` | `true`: trees grow, drop seeds and bear fruit in winter as in the rest of the year. `false`: in winter a tree rests. Only where there is a winter, and only with `seasonSource`. |
+| `layeredLimbs` | `true` | `true`: oak, birch and every other tree with a shape file get limbs in layers (see [Limbs in layers](#limbs-in-layers)): new land is planted with Foliage's shapes, and saplings grow level limbs. `false`: trees are shaped as Dynamic Trees shapes them. Trees that already stand keep their wood either way. |
 
 ### Taking the mod out of a world
 
@@ -288,7 +310,8 @@ In summer there is nothing to do: no tree holds a bare block then. The sweep loa
 | 0.2.0 | The leaf calendar as a look: leaves thin out and fall over the last days of autumn, bare twigs in winter, buds and young leaves over the first days of spring, in the new shapes. |
 | 0.3.0 | Real bare branches: leaf blocks of bare trees are swapped for an empty stand-in, so rain, snow, light and players pass through winter crowns. |
 | 0.4.0 | The rest of the year: leaves that drift down while they fall, trees that rest in winter and bear fruit in season, fruit and snow that come down with the leaves, `/foliage restore`, and far crowns that keep their leaves under Distant Horizons. |
-| 0.5.0 | A better bare tree and a better fall (this version): small branches in the tree's own bark instead of flat twig pictures, leaf blocks that get smaller as their leaves fall, and leaves let go by a leaf block that changes in view. |
+| 0.5.0 | A better bare tree and a better fall: small branches in the tree's own bark instead of flat twig pictures, leaf blocks that get smaller as their leaves fall, and leaves let go by a leaf block that changes in view. |
+| 0.6.0 | Trees shaped after real trees (this version): level limbs in layers for oak and birch, leaves that thin from the outside of their picture, short upright twigs on bare trees. |
 
 Ideas for later: a season color of its own for the far crowns of Distant Horizons, and leaves that gather on the ground.
 
@@ -314,6 +337,7 @@ The look happens in the game client while it builds the picture of a chunk. The 
 - `compat` package: `DistantHorizons` looks whether that mod is installed, and only then loads `DistantHorizonsLink`, which hands Distant Horizons the leaf block wherever a bare block stands while it builds its far picture.
 - `client.BareBlockStates`: a small resource pack made in memory that gives every bare block a block state file, so that the game does not report missing models. The models themselves are put in place by `LeafModels`: a bare block is drawn by the model of its leaf.
 - `network` package: the rules of the world, sent to players when they join and when the file changes.
+- `tree` package: the limbs in layers. `LayeredLimbs` reads the shape files (`tree_shapes` in data packs) right after Dynamic Trees has read its own, puts them in the place of Dynamic Trees' stored shapes for those species and gives the species the growth rule; it keeps what Dynamic Trees had, so that the setting can turn it off while the game runs. `LayeredLogic` is the growth rule `foliage:layered`.
 - `util` package: `PosHash`, fixed random numbers per position.
 
 Things that are easy to get wrong:
@@ -339,6 +363,10 @@ Things that are easy to get wrong:
 - Snow on a crown that goes bare is not simply removed, or a forest that is caught up in winter would have no snow on its floor. It is moved down to the first block that can hold it.
 - `/foliage restore` must not make new land. A region file's header names the half-made chunks around the visited land as well as the finished ones, and asking the game for one of those in full makes it, with more half-made neighbors behind it, so a sweep would go on making land for as long as it ran. Every chunk is first opened at the lowest step (`ChunkStatus.EMPTY`), which only reads what is on disk and makes nothing, and only a chunk that was written as a finished one is asked for in full. No bare block can stand in a chunk that was never finished. Each world is written to disk before its region files are read, so that a chunk which is loaded but which nobody watches any more is swept too.
 - The leaves in the air are not a particle type of the mod's own: a particle type is an entry in a registry that a server and a client have to agree on, and these leaves are each player's own business. The client makes them itself and hands them to the game's particle engine. The game only lets a mod's pictures into the particle atlas through such a type, so the leaf pictures live among the block pictures and are drawn the way the game draws the crumbs of a broken block (`ParticleRenderType.TERRAIN_SHEET`): cut out, with the block pictures bound.
+- Dynamic Trees throws a tree away whose wood touches other wood than its parent and child, so two limbs can never lie side by side or right above each other. That is why the layers turn (east-west, then north-south), and why the shape tool refuses to put wood next to wood.
+- Dynamic Trees lets a branch end rot away when no leaf block is next to it, and it takes leaves out again deep inside a crown. The shape tool models that (`tools/limbs/jocode.py`) and cuts such ends back, so a stored shape stands in the game exactly as it was made.
+- The game applies reload listeners in the order they were added. Foliage adds its shape loader at the lowest priority, so it runs after Dynamic Trees has read its shapes and species, and a test holds that it does.
+- A game test's area is walled in five blocks high, four blocks from its middle. A limb four blocks long under the wall's top ends inside the wall, so the tests that compare a tree with its code plant it on a block of soil above the wall.
 - The link to Distant Horizons is called for every block of every chunk it takes in, on its own threads, about 100,000 times per chunk. The answer is one test of a block's class and, for a bare block, one lookup in a table that is written once per kind of block.
 
 ### Building
@@ -353,6 +381,14 @@ The jar is written to `build/libs/`. The build needs Java 21 and nothing else: D
 
 The pictures of the leaves in the air are drawn by `tools/make_leaf_particles.py` (Python 3 with Pillow). They are part of the repository; the script is only needed to change them.
 
+The tree shapes with limbs in layers are written by `tools/limbs/layers.py` (Python 3, Pillow only for its drawings). The numbers of each tree kind (height, how far the limbs reach, how the crown runs) are at the top of that file. They too are part of the repository:
+
+```
+python3 tools/limbs/layers.py stats oak            # leaf blocks, wood and ends per size, without writing
+python3 tools/limbs/layers.py preview 5 out.png oak   # a sheet of rough drawings
+python3 tools/limbs/layers.py write                # writes src/main/resources/data/foliage/tree_shapes/
+```
+
 Distant Horizons is only needed to build against, never at runtime: `libs/distanthorizons-api-3.3.3.jar` holds its API alone, nothing of it goes into Foliage's jar, and a game without the mod never loads the class that names it.
 
 ### Testing
@@ -361,7 +397,7 @@ Distant Horizons is only needed to build against, never at runtime: `libs/distan
 ./gradlew runGameTestServer
 ```
 
-runs the 57 automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits, the bare blocks (a tree goes bare and back with nothing lost, grows in winter, is cut down bare, the light under it, places without a winter, the limits per tick), and the year of the tree itself (the season Dynamic Trees is given, fruit and snow that come down with the leaves, the shortcut over land that is already bare and what it saves, measured, the whole way out of `/foliage restore` from start to stop, and the region header the sweep goes by, read from a region file written by hand).
+runs the 66 automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits, the bare blocks (a tree goes bare and back with nothing lost, grows in winter, is cut down bare, the light under it, places without a winter, the limits per tick), and the year of the tree itself (the season Dynamic Trees is given, fruit and snow that come down with the leaves, the shortcut over land that is already bare and what it saves, measured, the whole way out of `/foliage restore` from start to stop, and the region header the sweep goes by, read from a region file written by hand), and the limbs in layers (the shape files are read as written, Dynamic Trees holds exactly the mod's shapes, stored shapes planted in the world stand whole with level limbs on many heights and no limb that sticks out from under the crown, a young oak grows level limbs, and the setting turns it off and on).
 
 ```
 ./gradlew runClient -Pfoliage.selfTest=true
@@ -374,6 +410,15 @@ LIBGL_ALWAYS_SOFTWARE=1 xvfb-run -a -s "-screen 0 1600x900x24" ./gradlew runClie
 ```
 
 The result is the line with `[Foliage self test] RESULT:` in the log.
+
+To look at tree shapes in the game there is a photo session (`dev.DevTreeShow`): it plants the trees a file lists on flat land and photographs them from the camera spots and on the dates the file lists.
+
+```
+python3 tools/limbs/layers.py show build/tree-show.txt oak:5:0 oak:8:0 birch:6:0 date=summer-7 date=winter-1
+./gradlew runClient -Pfoliage.show=build/tree-show.txt
+```
+
+`oak:5:0` is the oak of size 5 with number 0. The pictures are `run/screenshots/show-<date>-<tree>-<view>.png`, and the log ends with `[Foliage tree show] RESULT: DONE`.
 
 ### Versions
 

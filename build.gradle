@@ -76,6 +76,13 @@ neoForge {
                 }
                 programArguments.addAll '--width', '1600', '--height', '900'
             }
+            // A photo session of tree shapes listed in a text file (see
+            // DevTreeShow in the dev package and tools/limbs/layers.py):
+            //   ./gradlew runClient -Pfoliage.show=build/tree-show.txt
+            if (project.findProperty('foliage.show') != null) {
+                systemProperty 'foliage.dev.show', project.file(project.findProperty('foliage.show')).absolutePath
+                programArguments.addAll '--width', '1600', '--height', '900'
+            }
         }
 
         server {

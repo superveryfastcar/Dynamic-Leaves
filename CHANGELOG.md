@@ -3,6 +3,35 @@
 All notable changes to Foliage, newest first. The version numbers are
 explained in the README under "Versions".
 
+## 0.6.0
+
+Trees shaped after real trees, after the pictures of 0.5.0.
+
+- **Limbs in layers.** Oak, apple oak, swamp oak, birch and tall birch have
+  a straight trunk and level limbs that leave it layer above layer, from
+  low on the trunk to just under the top, each with side limbs at right
+  angles. Off the trunk no wood goes up, and no limb sticks out from under
+  the crown. The crowns have about as many leaf blocks as before. Trees
+  that come with new land take one of 140 stored shapes per kind; trees
+  that grow from a sapling grow by the new rule `foliage:layered`. Trees
+  that already stand keep their wood. New setting `layeredLimbs` (section
+  `trees` of `config/foliage-common.toml`, default on).
+- **Shapes are data.** A data pack can replace the shapes or give other
+  trees limbs in layers: `tree_shapes/<species namespace>/<species>.txt`,
+  in the format of Dynamic Trees' own shape files. A tree pack can name
+  the growth rule in a species file.
+- **Leaves thin from the outside.** The leaves of a leaf picture that lie
+  outside its middle go first and evenly, and the middle stays dense to
+  the end. The round leaf cards thin from their own rim in the same way,
+  and the small clumps, tufts and buds show the middle of the picture.
+- **Short upright twigs.** A small branch of a bare tree that stands
+  straight up or hangs straight down is now the short kind: with the
+  limb's own stub it is 8 to 10 pixels of upright wood instead of 15 to
+  19. Level ones are as they were.
+- For developers: `tools/limbs/layers.py` writes the shapes, and
+  `./gradlew runClient -Pfoliage.show=<file>` photographs trees in the
+  game. 66 game tests.
+
 ## 0.5.0
 
 A better bare tree and a better fall, after the first pictures of 0.4.0.
