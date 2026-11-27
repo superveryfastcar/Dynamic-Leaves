@@ -9,6 +9,7 @@ import io.github.superveryfastcar.foliage.Foliage;
 import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
 import io.github.superveryfastcar.foliage.block.Twins;
 import io.github.superveryfastcar.foliage.client.ClientLeafClock;
+import io.github.superveryfastcar.foliage.client.fall.FallingLeaves;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
@@ -370,6 +371,12 @@ public final class DevSelfTest {
                     return;
                 }
                 Shot current = SHOTS.get(shot);
+                // From here to the check: what the falling leaves and the
+                // walker do for this look, the date's own swaps included.
+                // The date is set below and the server works on it while
+                // this look waits, so the count has to start before that.
+                leavesBefore = FallingLeaves.made();
+                walkedBefore = walkerCounters(server);
                 if (current.gentle()) {
                     // Counted from before the date changes: what is built from here on, nobody asked for.
                     LeafModels.setSettings(current.settings());
@@ -400,7 +407,7 @@ public final class DevSelfTest {
             case 2 -> {
                 // Wait until the server has swapped the blocks the date asks for and the
                 // chunk builder has caught up, then a little longer.
-                quiet = minecraft.levelRenderer.hasRenderedAllSections() && walkerCounters(server)[6] == 0 ? quiet + 1 : 0;
+                quiet = minecraft.levelRenderer.hasRenderedAllSections() && walkerCounters(server)[PENDING] == 0 ? quiet + 1 : 0;
                 if (quiet < 30) {
                     return;
                 }
@@ -529,11 +536,14 @@ public final class DevSelfTest {
     private static long[] walkerCounters(IntegratedServer server) {
         return server.submit(() -> {
             LeafWalker walker = LeafWalker.of(server.overworld());
-            long[] counters = Arrays.copyOf(walker.counters(), 7);
-            counters[6] = walker.pending();
+            long[] counters = Arrays.copyOf(walker.counters(), LeafWalker.COUNTERS + 1);
+            counters[PENDING] = walker.pending();
             return counters;
         }).join();
     }
+
+    /** Where {@link #walkerCounters} puts the chunks the walker still has to look at. */
+    private static final int PENDING = LeafWalker.COUNTERS;
 
     /**
      * Holds what the player's game has at some spots against what the
@@ -628,6 +638,19 @@ public final class DevSelfTest {
             ResourceLocation buds = LeafPartsSource.budTwigs(ResourceLocation.fromNamespaceAndPath(Foliage.MOD_ID, "block/" + twigs)).withSuffix("_0");
             expect("and the same twigs with buds", atlas.getSprite(buds).contents().name().equals(buds));
         }
+        // The leaves that drift down are drawn from the block pictures
+        // (FallingLeaf.getRenderType). If one of them were not in there,
+        // the game would hand out its "missing picture" instead, and every
+        // leaf in the air would be a black and purple square.
+        for (int number = 0; number < FallingLeaves.pictures(); number++) {
+            ResourceLocation name = FallingLeaves.picture(number);
+            TextureAtlasSprite sprite = atlas.getSprite(name);
+            boolean there = sprite.contents().name().equals(name);
+            float share = there ? shownShare(sprite.contents().byMipLevel[0]) : 0.0F;
+            expect(String.format(Locale.ROOT, "the picture of a leaf in the air (%s) is among the block pictures and shows a leaf (%.2f of it)",
+                            name.getPath(), share),
+                    there && share > 0.10F && share < 0.90F);
+        }
         int leaves = 0;
         boolean ours = true;
         boolean onSeasons = false;
@@ -656,6 +679,18 @@ public final class DevSelfTest {
         expect("the world's rules of the leaf calendar arrived from the server", LeafCalendar.hasSentSettings());
         expect("the leaf clock runs", ClientLeafClock.clock() != null);
     }
+
+    /** How many leaves had been made when the look being worked on started. */
+    private static long leavesBefore;
+
+    /** The walker's counters when the look being worked on started. */
+    private static long[] walkedBefore = new long[LeafWalker.COUNTERS + 1];
+
+    /** The most leaves that were on their way at once, over the whole run. */
+    private static int mostLeavesAlive;
+
+    /** How many leaves came down over all the looks of the days when leaves fall. */
+    private static long leavesWhileFalling;
 
     /** The share of a picture's pixels that are shown (at least half opaque). */
     private static float shownShare(NativeImage image) {
@@ -769,6 +804,42 @@ public final class DevSelfTest {
         // number to the players when only the number changed (its own leaves look the same with any
         // number). Such a spot may be a step ahead or behind in the player's game until its block is
         // swapped, which sends the whole block. Those spots are counted, and left out of the next check.
+        // The falling leaves, and what the walker did for this one look.
+        long leaves = FallingLeaves.made() - leavesBefore;
+        int aliveNow = FallingLeaves.alive();
+        mostLeavesAlive = Math.max(mostLeavesAlive, aliveNow);
+        long[] step = new long[LeafWalker.COUNTERS];
+        for (int i = 0; i < step.length; i++) {
+            step[i] = walked[i] - walkedBefore[i];
+        }
+        log(String.format(Locale.ROOT, "%s: %d leaves came down for this look, %d on their way; the walker swapped %d and %d, "
+                        + "looked at %d chunks in %d rounds, counted %d sections, searched %d, in %.1f ms"
+                        + " (%.2f ms per round), %d lots of snow moved down, %d fruit dropped",
+                name, leaves, aliveNow, step[LeafWalker.TO_BARE], step[LeafWalker.TO_LEAF], step[LeafWalker.CHUNKS_LOOKED],
+                step[LeafWalker.ROUNDS], step[LeafWalker.SECTIONS_COUNTED], step[LeafWalker.SECTIONS_SEARCHED],
+                step[LeafWalker.NANOS] / 1.0e6,
+                step[LeafWalker.ROUNDS] > 0 ? step[LeafWalker.NANOS] / 1.0e6 / step[LeafWalker.ROUNDS] : 0.0,
+                step[LeafWalker.SNOW_LANDED], step[LeafWalker.FRUIT_DROPPED]));
+        expect(name + ": no more leaves are on their way than the settings allow (" + aliveNow + ")",
+                aliveNow <= FallingLeaves.settings().most());
+        switch (time) {
+            // How many leaves one look catches is a matter of luck: they
+            // start at the few places the look happens to draw, and on the
+            // first day of the fall only a handful of spots in the scene
+            // are losing leaves at all. So the leaves of all the days are
+            // counted together and held against zero once, in finish().
+            case FALL -> leavesWhileFalling += leaves;
+            case FULL, BARE -> expect(name + ": no leaf comes down outside the days they fall (" + leaves + ")", leaves == 0);
+            default -> { }
+        }
+        if (time == Time.BARE && step[LeafWalker.TO_BARE] == 0 && step[LeafWalker.TO_LEAF] == 0) {
+            // A look at a forest that is already bare: nothing is wrong,
+            // and the sections are done by their count alone.
+            expect(name + ": a round over a forest that is already bare searches no section block by block ("
+                            + step[LeafWalker.SECTIONS_SEARCHED] + " searched, " + step[LeafWalker.SECTIONS_COUNTED] + " counted)",
+                    step[LeafWalker.SECTIONS_SEARCHED] == 0);
+        }
+
         byte[] onServer = againstServer(minecraft.getSingleplayerServer(), spots, held);
         int otherBlock = 0;
         int otherNumber = 0;
@@ -1022,6 +1093,17 @@ public final class DevSelfTest {
     /** Writes the result line and closes the game. */
     private static void finish(Minecraft minecraft) {
         finished = true;
+        log("leaves that came down over all the days of the fall: " + leavesWhileFalling
+                + "; the most on their way at once: " + mostLeavesAlive);
+        long[] walked = walkerCounters(minecraft.getSingleplayerServer());
+        log(String.format(Locale.ROOT, "the walker over the whole run: %d spots made bare, %d given their leaves back, "
+                        + "%d chunks looked at, %d sections counted, %d of them searched block by block, %d rounds, "
+                        + "%.1f ms in all, %d lots of snow moved down, %d fruit dropped",
+                walked[LeafWalker.TO_BARE], walked[LeafWalker.TO_LEAF], walked[LeafWalker.CHUNKS_LOOKED],
+                walked[LeafWalker.SECTIONS_COUNTED], walked[LeafWalker.SECTIONS_SEARCHED], walked[LeafWalker.ROUNDS],
+                walked[LeafWalker.NANOS] / 1.0e6, walked[LeafWalker.SNOW_LANDED], walked[LeafWalker.FRUIT_DROPPED]));
+        expect("leaves come down while the leaves fall (" + leavesWhileFalling + " over the days of the fall)",
+                leavesWhileFalling > 0);
         if (FAILURES.isEmpty()) {
             log("RESULT: PASSED, " + passed + " checks, " + Math.max(0, shot) + " looks photographed");
         } else {

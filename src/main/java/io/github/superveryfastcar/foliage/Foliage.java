@@ -2,9 +2,13 @@ package io.github.superveryfastcar.foliage;
 
 import com.mojang.logging.LogUtils;
 import io.github.superveryfastcar.foliage.block.Twins;
+import io.github.superveryfastcar.foliage.command.FoliageCommand;
+import io.github.superveryfastcar.foliage.compat.DistantHorizons;
 import io.github.superveryfastcar.foliage.network.FoliageNetwork;
 import io.github.superveryfastcar.foliage.season.LeafCalendar;
 import io.github.superveryfastcar.foliage.world.LeafWalker;
+import io.github.superveryfastcar.foliage.world.Restore;
+import io.github.superveryfastcar.foliage.world.TreeSeasons;
 import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 import net.neoforged.bus.api.EventPriority;
@@ -17,7 +21,10 @@ import net.neoforged.fml.event.lifecycle.FMLCommonSetupEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.TagsUpdatedEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
+import net.neoforged.neoforge.event.RegisterCommandsEvent;
 import net.neoforged.neoforge.event.server.ServerAboutToStartEvent;
+import net.neoforged.neoforge.event.server.ServerStoppedEvent;
+import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.registries.RegisterEvent;
 import net.neoforged.neoforge.server.ServerLifecycleHooks;
 import org.slf4j.Logger;
@@ -65,8 +72,10 @@ import org.slf4j.Logger;
  *   <li>{@code block} package: the bare block, and which leaf block it
  *       belongs to.</li>
  *   <li>{@code world} package: swaps leaf blocks and bare blocks on the
- *       server.</li>
+ *       server, and tells Dynamic Trees what the season is.</li>
  *   <li>{@code network} package: sends the world's rules to the players.</li>
+ *   <li>{@code command} package: the command {@code /foliage}.</li>
+ *   <li>{@code compat} package: the link to Distant Horizons.</li>
  *   <li>{@code client.model} package: turns the pieces into faces and
  *       hands them to the game.</li>
  *   <li>{@code client.sprite} package: makes the extra leaf pictures from
@@ -118,6 +127,26 @@ public final class Foliage {
 
         // The walker that keeps the blocks in step with the leaf calendar.
         LeafWalker.register(NeoForge.EVENT_BUS);
+
+        // The season of the trees themselves: Dynamic Trees asks Foliage
+        // what the season is, so that its trees rest in winter and bear
+        // fruit in season. Offered once the settings have been read, and
+        // put in place again before a world starts, in case Dynamic Trees
+        // picked another source in between.
+        modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(() -> {
+            TreeSeasons.offer();
+            TreeSeasons.install();
+        }));
+        NeoForge.EVENT_BUS.addListener((ServerAboutToStartEvent event) -> TreeSeasons.install());
+
+        // The link to Distant Horizons, if it is installed: far crowns
+        // keep their leaves all year.
+        modBus.addListener((FMLCommonSetupEvent event) -> event.enqueueWork(DistantHorizons::init));
+
+        // The command /foliage, and the sweep behind /foliage restore.
+        NeoForge.EVENT_BUS.addListener((RegisterCommandsEvent event) -> FoliageCommand.register(event.getDispatcher()));
+        NeoForge.EVENT_BUS.addListener((ServerTickEvent.Post event) -> Restore.tick(event.getServer()));
+        NeoForge.EVENT_BUS.addListener((ServerStoppedEvent event) -> Restore.serverStopped());
 
         // The client side is set up in client.FoliageClient.
     }

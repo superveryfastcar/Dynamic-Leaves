@@ -1,5 +1,7 @@
 package io.github.superveryfastcar.foliage.world;
 
+import com.dtteam.dynamictrees.block.Growable;
+import com.dtteam.dynamictrees.block.fruit.FruitBlock;
 import com.dtteam.dynamictrees.tree.TreeHelper;
 import io.github.superveryfastcar.calendar.api.Calendar;
 import io.github.superveryfastcar.calendar.api.CalendarRules;
@@ -36,7 +38,9 @@ import net.minecraft.world.level.block.SnowLayerBlock;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.chunk.LevelChunk;
 import net.minecraft.world.level.chunk.LevelChunkSection;
+import net.minecraft.world.level.chunk.PalettedContainer;
 import net.minecraft.world.level.chunk.PalettedContainerRO;
+import net.minecraft.world.level.levelgen.Heightmap;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.neoforge.event.level.ChunkTicketLevelUpdatedEvent;
 import net.neoforged.neoforge.event.level.LevelEvent;
@@ -80,12 +84,18 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * keeps a short list of the kinds of blocks in it. A section whose list
  * names nothing that could be wrong is skipped by that list alone: one
  * without leaves, a summer forest full of leaf blocks, a section where
- * there is no winter. Only the others are looked at block by block, which
- * takes a few hundred thousandths of a second each. (The list may still
- * name a kind of block that has since left the section, so a forest that
- * was swapped is looked at in full at every step until its chunks are
- * next read from disk. That is a few hundred sections a few times a
- * day.)
+ * there is no winter. That takes a few millionths of a second per chunk.
+ *
+ * <p>The list may still name a kind of block that has since left the
+ * section: after the leaves of a forest were swapped, every list there
+ * names both the leaf block and the bare block until the chunk is next
+ * read from disk. So where the list alone says "maybe", and only one kind
+ * of block could be wrong (in summer the bare blocks, in winter the leaf
+ * blocks), the section's blocks are counted by kind ({@link #count}).
+ * That takes a few hundredths of a thousandth of a second. Only a section
+ * that does hold a wrong block, and every section with leaves while the
+ * leaves fall or come back, is looked at block by block, which takes
+ * about ten times as long.</p>
  *
  * <p>Per tick the walker stops when it has looked at
  * {@link WalkSettings#chunksPerTick} chunks, swapped
@@ -98,8 +108,9 @@ import net.neoforged.neoforge.event.tick.LevelTickEvent;
  * all. No neighbor is told and nothing reacts, because for the tree
  * nothing has changed: the bare block gives Dynamic Trees the same
  * answers as the leaf. Only what rested on a leaf that went bare is
- * looked after: snow lying on it goes with the leaves, and anything else
- * that hung on to it (a vine) is told that its hold is gone.
+ * looked after ({@link #settle}): snow lying on it falls to whatever is
+ * below, fruit hanging under it drops off, and anything else that hung on
+ * to it (a vine) is told that its hold is gone.
  *
  * <p>Animals on their way are not asked to think again either, as the
  * game would do for a block placed by hand: with hundreds of swaps in a
@@ -151,6 +162,9 @@ public final class LeafWalker {
     /** Chunks in which a wrong block was noticed; they are looked at first in the next tick. */
     private final LongOpenHashSet urgent = new LongOpenHashSet();
 
+    /** Spots under a bare block where fruit has appeared; it is taken away in the next tick. */
+    private final LongArrayList fruitUnderBare = new LongArrayList();
+
     /** The leaf calendar at this moment. */
     @Nullable
     private LeafClock clock;
@@ -193,6 +207,23 @@ public final class LeafWalker {
     /** How many blocks may still be swapped in this tick. */
     private int changesLeft;
 
+    /** What the last count of a section found ({@link #count}). */
+    private int countedBare;
+    private int countedLeaves;
+    private int countedStray;
+
+    /** Sorts the blocks of a section into those three numbers; kept, to make no garbage. */
+    private final PalettedContainer.CountConsumer<BlockState> counter = (state, number) -> {
+        if (state.getBlock() instanceof BareLeavesBlock) {
+            countedBare += number;
+            if (this.strayBare.test(state)) {
+                countedStray += number;
+            }
+        } else if (this.shedsLeaf.test(state)) {
+            countedLeaves += number;
+        }
+    };
+
     // Counters since the world started, for tests and measurements.
     private long toBare;
     private long toLeaf;
@@ -200,6 +231,9 @@ public final class LeafWalker {
     private long sectionsSearched;
     private long rounds;
     private long nanos;
+    private long sectionsCounted;
+    private long snowLanded;
+    private long fruitDropped;
 
     private LeafWalker(ServerLevel level) {
         this.level = level;
@@ -288,6 +322,13 @@ public final class LeafWalker {
      * comes back as it is; so does any state outside a running world (a
      * chunk that is being made), where there is no date to go by.
      *
+     * <p>Nothing is settled here as it is in {@link #settle}, and nothing
+     * needs to be: this is a block coming into a spot that held air, so
+     * there is nothing resting on it yet. Snow cannot have been lying
+     * above, because snow needs a block under it, and fruit that Dynamic
+     * Trees hangs under a bare block afterwards is taken away by
+     * {@link #fruitAppeared}.</p>
+     *
      * @param accessor the world
      * @param pos      the spot
      * @param state    the block that is to stand there
@@ -331,6 +372,21 @@ public final class LeafWalker {
         }
     }
 
+    /**
+     * Told by a bare block that fruit has appeared right under it.
+     * Dynamic Trees hangs fruit under any leaf of the tree, and a bare
+     * block is a leaf to it; the fruit is taken away in the next tick
+     * ({@link #clearFruit}).
+     *
+     * @param level the world
+     * @param pos   where the fruit hangs
+     */
+    public static void fruitAppeared(ServerLevel level, BlockPos pos) {
+        if (level.getServer().isSameThread()) {
+            of(level).fruitUnderBare.add(pos.asLong());
+        }
+    }
+
     // ------------------------------------------------------------------
     // Every tick
     // ------------------------------------------------------------------
@@ -350,6 +406,9 @@ public final class LeafWalker {
                 enqueue(waiting.getLong(i));
             }
             waiting.clear();
+        }
+        if (!fruitUnderBare.isEmpty()) {
+            clearFruit();
         }
         if (queue.isEmpty() && urgent.isEmpty()) {
             return;
@@ -478,7 +537,7 @@ public final class LeafWalker {
      *         inside it (the walker then goes on at the same section in
      *         the next tick)
      */
-    private boolean walkChunk(LevelChunk chunk, ChunkHolder holder, boolean enabled, long deadline) {
+    private boolean walkChunk(LevelChunk chunk, @Nullable ChunkHolder holder, boolean enabled, long deadline) {
         LeafClock now = clock;
         long pos = chunk.getPos().toLong();
         int first = resumeChunk == pos ? resumeSection : 0;
@@ -510,8 +569,9 @@ public final class LeafWalker {
     }
 
     /**
-     * Decides from a section's list of block kinds and of biomes whether
-     * any block in it can be wrong.
+     * Decides from a section's list of block kinds and of biomes, and if
+     * need be from a count of its blocks, whether any block in it can be
+     * wrong.
      *
      * @return -1 if all are right for sure; else where the section stands
      *         ({@link #WINTER_ALL}, {@link #WINTER_NONE} or
@@ -521,7 +581,7 @@ public final class LeafWalker {
         boolean bare = section.maybeHas(IS_BARE);
         if (!shedding) {
             // Nothing sheds: every bare block must become a leaf again.
-            return bare ? WINTER_NONE : -1;
+            return bare && count(section) && countedBare > 0 ? WINTER_NONE : -1;
         }
         boolean leaves = section.maybeHas(shedsLeaf);
         if (!bare && !leaves) {
@@ -533,13 +593,35 @@ public final class LeafWalker {
         int winter = !someWinter ? WINTER_NONE : !someNone ? WINTER_ALL : WINTER_MIXED;
         if (winter == WINTER_NONE) {
             // No winter here: leaves stay, bare blocks have no business.
-            return bare ? winter : -1;
+            return bare && count(section) && countedBare > 0 ? winter : -1;
         }
         if (winter == WINTER_ALL && now.allBare()) {
             // Deep winter: wrong are only leaves of a kind that sheds, and bare blocks of a kind that does not.
-            return leaves || section.maybeHas(strayBare) ? winter : -1;
+            if (!leaves && !section.maybeHas(strayBare)) {
+                return -1;
+            }
+            count(section);
+            return countedLeaves > 0 || countedStray > 0 ? winter : -1;
         }
         return winter;
+    }
+
+    /**
+     * Counts the blocks of a section by kind: bare blocks
+     * ({@link #countedBare}), bare blocks of a kind that does not shed
+     * ({@link #countedStray}) and leaf blocks of a kind that sheds
+     * ({@link #countedLeaves}). Unlike the section's list of kinds, the
+     * count is exact.
+     *
+     * @return true, always (so that it can stand in a condition)
+     */
+    private boolean count(LevelChunkSection section) {
+        countedBare = 0;
+        countedLeaves = 0;
+        countedStray = 0;
+        sectionsCounted++;
+        section.getStates().count(counter);
+        return true;
     }
 
     /**
@@ -549,7 +631,7 @@ public final class LeafWalker {
      * @return false if this tick's limit of swaps was reached before the
      *         end
      */
-    private boolean search(LevelChunk chunk, ChunkHolder holder, LevelChunkSection section, int baseY,
+    private boolean search(LevelChunk chunk, @Nullable ChunkHolder holder, LevelChunkSection section, int baseY,
                            @Nullable LeafClock now, boolean shedding, int winter) {
         Reference2ReferenceOpenHashMap<Block, Block> pairs = Twins.pairs();
         int baseX = chunk.getPos().getMinBlockX();
@@ -594,12 +676,15 @@ public final class LeafWalker {
      * Swaps the block of a spot for the other of its pair, quietly (see
      * the class notes).
      */
-    private void swap(LevelChunk chunk, ChunkHolder holder, BlockPos pos, BlockState state, Block twin, boolean toBareBlock) {
+    private void swap(LevelChunk chunk, @Nullable ChunkHolder holder, BlockPos pos, BlockState state, Block twin,
+                      boolean toBareBlock) {
         BlockState next = Twins.swap(state, twin);
         if (chunk.setBlockState(pos, next, false) == null) {
             return;
         }
-        holder.blockChanged(pos);
+        if (holder != null) {
+            holder.blockChanged(pos);
+        }
         level.getPathTypeCache().invalidate(pos);
         if (toBareBlock) {
             toBare++;
@@ -611,16 +696,41 @@ public final class LeafWalker {
 
     /**
      * Looks after what rested on a leaf block that has just become bare.
-     * Snow on top goes without a sound. Anything else that is not part of
-     * a tree and not a solid block is told that the block next to it
-     * changed, and then does what the game has it do: a vine lets go.
+     * <ul>
+     *   <li>Snow on top of it falls ({@link #land}).</li>
+     *   <li>Fruit that hangs under it comes off. Fruit that has grown at
+     *       all drops, the way Dynamic Trees drops ripe fruit: what the
+     *       fruit is worth at its age falls as an item. Fruit that has
+     *       only just set goes quietly, because it is worth nothing and
+     *       breaking it would only make a noise.</li>
+     *   <li>Anything else next to it that is not part of a tree and not a
+     *       solid block is told that the block next to it changed, and
+     *       then does what the game has it do: a vine lets go.</li>
+     * </ul>
      */
-    private void settle(LevelChunk chunk, ChunkHolder holder, BlockPos pos, BlockState bare) {
+    private void settle(LevelChunk chunk, @Nullable ChunkHolder holder, BlockPos pos, BlockState bare) {
         near.setWithOffset(pos, Direction.UP);
-        if (chunk.getBlockState(near).getBlock() instanceof SnowLayerBlock
+        BlockState above = chunk.getBlockState(near);
+        if (above.getBlock() instanceof SnowLayerBlock
                 && chunk.setBlockState(near, Blocks.AIR.defaultBlockState(), false) != null) {
-            holder.blockChanged(near);
+            if (holder != null) {
+                holder.blockChanged(near);
+            }
             level.getPathTypeCache().invalidate(near);
+            land(chunk, pos, above);
+        }
+        near.setWithOffset(pos, Direction.DOWN);
+        BlockState below = chunk.getBlockState(near);
+        if (below.getBlock() instanceof FruitBlock fruit) {
+            fruitDropped++;
+            if (fruit.getAge(below) <= 0) {
+                // Fruit that has only just set is worth nothing at all,
+                // and breaking it would give a crack and a puff of crumbs
+                // for an empty hand. It goes quietly.
+                level.removeBlock(near.immutable(), false);
+            } else {
+                ((Growable) fruit).drop(level, near.immutable(), below);
+            }
         }
         for (Direction side : DIRECTIONS) {
             near.setWithOffset(pos, side);
@@ -639,6 +749,78 @@ public final class LeafWalker {
             BlockState updated = other.updateShape(side.getOpposite(), bare, level, otherPos, pos);
             if (updated != other) {
                 Block.updateOrDestroy(other, updated, level, otherPos, Block.UPDATE_CLIENTS);
+            }
+        }
+    }
+
+    /**
+     * Lets snow fall that lay on a leaf block which has just become
+     * bare. It falls straight down, through bare blocks and everything
+     * else that does not stop a walker, and lies on the first block that
+     * stops it and has a free spot above: a leaf further down, a branch,
+     * the ground.
+     *
+     * <p>A block that stops it but has no free spot above is passed by,
+     * and the snow goes on falling. That is the usual case inside a
+     * crown: the leaf under the one that just went bare is still a leaf,
+     * and the spot above it is the bare block itself, which holds
+     * nothing. The snow of such a spot ends up on the ground instead of
+     * hanging in the crown or being lost.</p>
+     *
+     * <p>It is gone where there is nowhere to lie: on a full block whose
+     * top is taken (snow already there, a plant), and at the bottom of
+     * the world.</p>
+     *
+     * <p>Without this, land that was last seen in autumn and is brought
+     * up to date in winter would get its snow on the crowns, lose it with
+     * the leaves and stand on bare ground in a white forest.</p>
+     *
+     * @param chunk the chunk of the column
+     * @param from  the spot of the bare block the snow lay on
+     * @param snow  the snow as it lay
+     */
+    private void land(LevelChunk chunk, BlockPos from, BlockState snow) {
+        int bottom = level.getMinBuildHeight();
+        BlockPos.MutableBlockPos spot = new BlockPos.MutableBlockPos(from.getX(), from.getY(), from.getZ());
+        BlockPos.MutableBlockPos on = new BlockPos.MutableBlockPos();
+        // The same question the game's map of "where rain lands" asks of a block.
+        while (spot.getY() > bottom) {
+            spot.move(Direction.DOWN);
+            BlockState state = chunk.getBlockState(spot);
+            if (!state.blocksMotion() && state.getFluidState().isEmpty()) {
+                continue;
+            }
+            on.set(spot.getX(), spot.getY() + 1, spot.getZ());
+            if (chunk.getBlockState(on).isAir() && snow.canSurvive(level, on)) {
+                // Placed the game's way, so that grass under it turns white at its sides.
+                level.setBlock(on, snow, Block.UPDATE_ALL);
+                snowLanded++;
+                return;
+            }
+            if (state.isCollisionShapeFullBlock(level, spot)) {
+                // The ground, or a wall of it: there is no way past, and
+                // the spot above is taken. The snow is gone.
+                return;
+            }
+            // A crown, a branch, a plant: the snow falls past it.
+        }
+    }
+
+    /**
+     * Takes away fruit that has appeared under a bare block since the
+     * last tick ({@link #fruitAppeared}). It is new, so nothing drops.
+     */
+    private void clearFruit() {
+        long[] spots = fruitUnderBare.toLongArray();
+        fruitUnderBare.clear();
+        for (long packed : spots) {
+            cursor.set(packed);
+            if (!level.isLoaded(cursor)) {
+                continue;
+            }
+            if (level.getBlockState(cursor).getBlock() instanceof FruitBlock
+                    && level.getBlockState(near.setWithOffset(cursor, Direction.UP)).getBlock() instanceof BareLeavesBlock) {
+                level.removeBlock(cursor.immutable(), false);
             }
         }
     }
@@ -668,6 +850,38 @@ public final class LeafWalker {
         return (int) (toBare + toLeaf - before);
     }
 
+    /**
+     * Puts every spot of one loaded chunk right at once, with no limit:
+     * the restore sweep ({@link Restore}).
+     *
+     * <p>The sweep goes by the chunks on disk, and those are the chunks
+     * around the players as well. A chunk that players are watching is
+     * swapped exactly as in a round of the walker, with every change sent
+     * to them; a chunk nobody has is swapped quietly and marked as
+     * changed, so the game writes it when it unloads it.</p>
+     *
+     * <p>The walker's own place in its round is kept, so that a sweep
+     * running beside it does not make it start a chunk again.</p>
+     *
+     * @param chunk a loaded chunk
+     * @return how many blocks were swapped
+     */
+    public int sweep(LevelChunk chunk) {
+        ChunkHolder holder = inReach.get(chunk.getPos().toLong());
+        clock = clockNow();
+        long before = toBare + toLeaf;
+        changesLeft = Integer.MAX_VALUE;
+        long keptChunk = resumeChunk;
+        int keptSection = resumeSection;
+        resumeChunk = Long.MIN_VALUE;
+        walkChunk(chunk, holder, settings.enabled(), Long.MAX_VALUE);
+        resumeChunk = keptChunk;
+        resumeSection = keptSection;
+        // Every swap has marked the chunk as changed already
+        // (LevelChunk.setBlockState does), so nothing to do here.
+        return (int) (toBare + toLeaf - before);
+    }
+
     /** How many chunks are still waiting for a look. */
     public int pending() {
         return queue.size() + waiting.size();
@@ -678,13 +892,30 @@ public final class LeafWalker {
         return inReach.size();
     }
 
+    /** Where each counter is in what {@link #counters()} gives. */
+    public static final int TO_BARE = 0;
+    public static final int TO_LEAF = 1;
+    public static final int CHUNKS_LOOKED = 2;
+    public static final int SECTIONS_SEARCHED = 3;
+    public static final int ROUNDS = 4;
+    public static final int NANOS = 5;
+    public static final int SECTIONS_COUNTED = 6;
+    public static final int SNOW_LANDED = 7;
+    public static final int FRUIT_DROPPED = 8;
+
+    /** How many counters there are. */
+    public static final int COUNTERS = 9;
+
     /**
      * The counters since this world started: leaf blocks made bare, bare
      * blocks made leaves, chunks looked at, sections looked at block by
-     * block, rounds started, and the time spent in billionths of a
-     * second.
+     * block, rounds started, the time spent in billionths of a second,
+     * sections whose blocks were counted, snow layers that fell from a
+     * leaf going bare and landed, and fruit that dropped from one. The
+     * places in the array are the numbers above.
      */
     public long[] counters() {
-        return new long[] {toBare, toLeaf, chunksLooked, sectionsSearched, rounds, nanos};
+        return new long[] {toBare, toLeaf, chunksLooked, sectionsSearched, rounds, nanos, sectionsCounted, snowLanded,
+                fruitDropped};
     }
 }

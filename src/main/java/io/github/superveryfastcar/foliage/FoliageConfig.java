@@ -87,6 +87,12 @@ public final class FoliageConfig {
     /** The highest fire number that means anything to the game. */
     public static final int MAX_FIRE_NUMBER = 300;
 
+    /** Whether Foliage tells Dynamic Trees what the season is. */
+    public static final ModConfigSpec.BooleanValue SEASON_SOURCE;
+
+    /** Whether trees grow, drop seeds and bear fruit in winter too. */
+    public static final ModConfigSpec.BooleanValue GROWTH_IN_WINTER;
+
     static {
         SeasonSettings standard = SeasonSettings.DEFAULT;
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -172,6 +178,23 @@ public final class FoliageConfig {
                 .defineInRange("twigsSpreadFire", DEFAULT_TWIGS_SPREAD_FIRE, 0, MAX_FIRE_NUMBER);
         b.pop();
 
+        b.comment("The year of the trees themselves: how the season changes what Dynamic Trees does with them.",
+                  "This is about growth and fruit, not about the leaves.")
+         .push("trees");
+        SEASON_SOURCE = b.comment("true: Foliage tells Dynamic Trees what the season is, so that its trees rest in winter",
+                                  "and bear fruit in its season. Where Seasons says there is no winter (deserts, jungles,",
+                                  "savannas), trees grow and bear all year, as in a game without seasons.",
+                                  "Dynamic Trees decides which mod it listens to, in its own settings file",
+                                  "(config/dynamictrees-common.toml, preferredSeasonMod): \"*\" or \"foliage\" means Foliage.",
+                                  "false: Dynamic Trees is left as it is.")
+                .define("seasonSource", true);
+        GROWTH_IN_WINTER = b.comment("true: trees grow, drop seeds and bear fruit in winter as in the rest of the year.",
+                                     "false: in winter a tree rests. Nothing grows, no seed falls from a crown by itself,",
+                                     "and fruit that still hangs withers. Only where there is a winter.",
+                                     "Needs seasonSource.")
+                .define("growthInWinter", false);
+        b.pop();
+
         SPEC = b.build();
     }
 
@@ -200,6 +223,16 @@ public final class FoliageConfig {
             return WalkSettings.DEFAULT;
         }
         return new WalkSettings(BARE_BLOCKS.get(), CHUNKS_PER_TICK.get(), CHANGES_PER_TICK.get(), MILLIS_PER_TICK.get());
+    }
+
+    /** Whether Foliage tells Dynamic Trees what the season is, as the file has it now. */
+    public static boolean seasonSource() {
+        return SPEC.isLoaded() ? SEASON_SOURCE.get() : true;
+    }
+
+    /** Whether trees grow, drop seeds and bear fruit in winter too, as the file has it now. */
+    public static boolean growthInWinter() {
+        return SPEC.isLoaded() && GROWTH_IN_WINTER.get();
     }
 
     /** How easily fire eats a bare block, as the file has it now (the game's "flammability"). */

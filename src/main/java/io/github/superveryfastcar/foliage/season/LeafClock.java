@@ -219,6 +219,16 @@ public final class LeafClock {
         return phase == Phase.FULL;
     }
 
+    /**
+     * Whether leaves are falling at this step: the step lies in autumn's
+     * window. Spots of a tree whose turn has not come are still in full
+     * leaf, and those that are done are bare; this says only that
+     * somewhere leaves are coming down.
+     */
+    public boolean falling() {
+        return phase == Phase.FALL;
+    }
+
     /** Whether every leaf spot of a tree that sheds is bare at this step: winter. */
     public boolean allBare() {
         return phase == Phase.BARE;

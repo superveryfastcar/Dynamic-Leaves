@@ -43,6 +43,13 @@ dependencies {
     implementation "com.dtteam:dynamictrees:${dynamictrees_version}"
     implementation "io.github.superveryfastcar.calendar:calendar:${calendar_version}"
     implementation "io.github.superveryfastcar.seasons:seasons:${seasons_version}"
+
+    // Distant Horizons: only the doors it opens for other mods (its API),
+    // and only to compile against. Foliage runs with it and without it, and
+    // nothing of it is packed into Foliage's jar. The classes that use it
+    // are loaded only when Distant Horizons is installed
+    // (compat.DistantHorizonsLink).
+    compileOnly "com.seibel.distanthorizons:distanthorizons-api:${distant_horizons_version}"
 }
 
 neoForge {

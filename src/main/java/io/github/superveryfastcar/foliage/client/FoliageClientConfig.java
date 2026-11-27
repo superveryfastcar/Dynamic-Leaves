@@ -1,5 +1,6 @@
 package io.github.superveryfastcar.foliage.client;
 
+import io.github.superveryfastcar.foliage.client.fall.FallSettings;
 import io.github.superveryfastcar.foliage.shape.LeafShape;
 import io.github.superveryfastcar.foliage.shape.ShapeSettings;
 import io.github.superveryfastcar.foliage.shape.WinterTwigs;
@@ -62,6 +63,18 @@ public final class FoliageClientConfig {
     /** The size of the clump of half-grown leaves in spring. */
     public static final ModConfigSpec.IntValue HALF_SIZE;
 
+    /** Whether leaves drift down from the crowns while the leaves fall. */
+    public static final ModConfigSpec.BooleanValue FALLING_LEAVES;
+
+    /** How many leaves fall. */
+    public static final ModConfigSpec.IntValue FALL_AMOUNT;
+
+    /** How far from the player leaves start, in blocks. */
+    public static final ModConfigSpec.IntValue FALL_DISTANCE;
+
+    /** How many leaves may be on their way at once. */
+    public static final ModConfigSpec.IntValue FALL_MOST;
+
     static {
         ShapeSettings standard = ShapeSettings.DEFAULT;
         ModConfigSpec.Builder b = new ModConfigSpec.Builder();
@@ -119,6 +132,24 @@ public final class FoliageClientConfig {
                 .defineInRange("halfSize", standard.halfSize(), ShapeSettings.MIN_CLUMP, ShapeSettings.MAX_CLUMP);
         b.pop();
 
+        FallSettings fall = FallSettings.DEFAULT;
+        b.comment("Leaves that drift down from the crowns while the leaves fall, in the last days of autumn.",
+                  "They are a look of this player's game only: nothing falls in the world, and nothing piles up.")
+         .push("fallingLeaves");
+        FALLING_LEAVES = b.comment("false: no leaves drift down. Nothing is looked at either, so this costs nothing.")
+                .define("fallingLeaves", fall.enabled());
+        FALL_AMOUNT = b.comment("How many leaves fall: 1 is a few, 3 a steady fall, 10 a shower.",
+                                "This is how many places near the player are looked at per tick, so it costs",
+                                "a little more at a higher number even where there are no trees.")
+                .defineInRange("amount", fall.amount(), FallSettings.MIN_AMOUNT, FallSettings.MAX_AMOUNT);
+        FALL_DISTANCE = b.comment("How far from the player leaves may start, in blocks. Further: leaves in more of the view,",
+                                  "but fewer close by, because the places are drawn from a larger space.")
+                .defineInRange("distance", fall.distance(), FallSettings.MIN_DISTANCE, FallSettings.MAX_DISTANCE);
+        FALL_MOST = b.comment("How many leaves may be on their way at once. 200 cost about as much as light rain.",
+                              "0: none, and nothing is looked at either, the same as fallingLeaves = false.")
+                .defineInRange("most", fall.most(), FallSettings.MIN_MOST, FallSettings.MAX_MOST);
+        b.pop();
+
         SPEC = b.build();
     }
 
@@ -136,5 +167,16 @@ public final class FoliageClientConfig {
         return new ShapeSettings(SHAPE.get(), FAST_LEAVES.get(), MAX_FACES.get(), TIP_SIDES.get(), CLUMP_SIDES.get(),
                 CARD_WIDTH.get(), CARD_HEIGHT.get(), TUFT_SIZE.get(), TIP_SIZE.get(), CLUMP_SIZE.get(),
                 WINTER_TWIGS.get(), TWIG_DEPTH.get(), FIRST_SIZE.get(), HALF_SIZE.get());
+    }
+
+    /**
+     * The settings of the falling leaves as the file has them now, or the
+     * mod's own values while the file is not read yet.
+     */
+    public static FallSettings fallSettings() {
+        if (!SPEC.isLoaded()) {
+            return FallSettings.DEFAULT;
+        }
+        return new FallSettings(FALLING_LEAVES.get(), FALL_AMOUNT.get(), FALL_DISTANCE.get(), FALL_MOST.get());
     }
 }

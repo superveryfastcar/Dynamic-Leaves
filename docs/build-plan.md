@@ -423,6 +423,264 @@ Open after stage 3, for stage 4:
   season. It was left out of stage 3 because the bare crown no longer
   needs it; it is built in stage 4 with the fruit.
 
+### Stage 4 plan (2026-11-27)
+
+Checked against the design doc's "Cases thought through", "Settings",
+"Fitting into Dynamic Trees" and "Other mods" before any code.
+
+Parts, in build order. All of them are written by the largest model; the
+complicated ones are marked.
+
+| # | Part | Where | Complicated |
+|---|------|-------|-------------|
+| 1 | **Walker cost in winter.** Before a section is looked at block by block, count the blocks its list names (`PalettedContainer.count`): a section whose bare blocks are all right and that holds no leaf that sheds is done by the count alone. | `world/LeafWalker.look` | no |
+| 2 | **Trees rest in winter.** Foliage signs in as Dynamic Trees' season source (`SeasonCompatibilityHandler.registerSeasonManager("foliage", ...)`). The season comes from Calendar. Where Seasons says there is no winter, trees grow, drop seeds and bear fruit all year. Where there is one, Dynamic Trees' own curves apply (growth picks up through early spring and slows in late autumn, seeds mostly in autumn, fruit from spring to autumn), and in winter all three stand still unless the setting `growthInWinter` is on. | new `world/TreeSeasons`, `FoliageConfig`, `Foliage` | yes: threads (worldgen asks from worker threads), the client asks too (tooltips), which source wins when Serene Seasons is installed |
+| 3 | **Fruit.** Fruit that hangs under a leaf block that goes bare drops off as if picked. Fruit that appears under a bare block is taken away in the next tick. | `LeafWalker.settle`, `BareLeavesBlock.updateShape` | no |
+| 4 | **Snow.** Snow that lay on a leaf that goes bare falls to whatever is below it in its column (the next leaf, a branch that can hold it, the ground) and lies there if snow can lie there and none lies there yet. Checked with Seasons' snowfall, its catch-up and Snow! Real Magic. | `LeafWalker.settle` | yes: order against Seasons' catch-up, heightmaps |
+| 5 | **`/foliage restore`.** Switches `bareBlocks` off, then turns every bare block of the world back into its leaf: loaded land through the walker, land on disk chunk by chunk (only chunks whose saved data names a bare block are loaded), a few per tick, with a progress line. `/foliage restore status`, `/foliage restore stop`. `/foliage bare on` switches bare branches back on. | new `command/FoliageCommand`, new `world/Restore` | yes: reading region files, loading chunks without making new land, the server must stay responsive |
+| 6 | **Falling leaves.** A particle of the mod's own (a small leaf, tinted in the tree's color of that day) that drifts down from leaf spots at the stages "thin", "thinner" and "a few last leaves". Made in each player's game from random spots near the camera; nothing is sent. Settings: on or off, amount, distance, most particles alive. Costs nothing outside the weeks leaves fall. | new `client/fall/*`, particle type, pictures, `FoliageClientConfig` | yes: the look |
+| 7 | **Distant Horizons.** Where a bare block stands, Distant Horizons is handed the full leaf (`DhApiChunkProcessingEvent`), so far crowns stay whole whatever the season. Only if Distant Horizons is installed; compiled against its API jar only. | new `compat/DistantHorizonsLink` | yes: must not load without DH, runs on DH's threads |
+| 8 | **Measurements.** The self test's forest at once from summer to winter with the default limits (ticks, time per tick, swaps per tick), a round over the bare forest before and after part 1, particles alive at the peak of the fall, written to `docs/measurements.md`. | `dev/DevSelfTest` | no |
+| 9 | README, changelog, "Stage 4 as built", design doc, review by a helper, fixes, release. | | |
+
+Decisions taken here that the design doc does not spell out (to name in the
+report):
+
+- In winter not only growth stands still but also seeds and new fruit: a
+  tree that rests, rests. One setting (`growthInWinter`) for all three.
+- The curves outside winter are Dynamic Trees' own (the ones it uses with
+  any season mod), so tree packs that shift a species' fruit season keep
+  working.
+- Snow on a leaf that goes bare falls down instead of vanishing (the design
+  doc says "taken away"). Without this, land that was last seen in autumn
+  and is caught up in winter gets its snow on the crowns first, loses it
+  with the leaves and stands on bare ground in a white forest.
+- Snow does not lie on a bare crown, as the design doc says. Snow drawn on
+  bare branches would be a new feature with its own state and is offered,
+  not built.
+- Chunks made in winter stay as they are (made in leaf, swapped when they
+  come into reach): the look is right from the first frame, and the snow
+  finds its way down by the rule above.
+
+Tricky spots:
+
+- **Threads.** Dynamic Trees asks the season source while it makes new
+  land, on worker threads. The source reads the Calendar (safe from any
+  thread) and the biome without asking the server for a chunk
+  (`getUncachedNoiseBiome` off the server thread).
+- **Config timing.** Dynamic Trees picks its season source whenever one of
+  its settings files is read. The source must be signed in before that
+  (mod constructor) and picked again once all mods are set up.
+- **Fruit under bare blocks** is supported by Dynamic Trees' own rule (the
+  bare block is a leaf to it), so it has to be taken away by us.
+- **Restore** must not make new land: a chunk is loaded on its own, without
+  its neighbors being brought to "ticking".
+- **Particles** must not cost anything in summer and winter: the sampler
+  returns at once unless the leaf calendar is in its fall window.
+
+Tests: a game test per row of the table above that has a rule (walker
+count skip, the three factors per season and place, fruit drop, snow
+fall-through and landing, restore on loaded land and on a saved chunk's
+data, the Distant Horizons swap as a pure function), and the self test for
+the particles, the measurements and one run each with Snow! Real Magic and
+Distant Horizons in `run/mods`.
+
+### Stage 4 as built (2026-11-27)
+
+Every part of the table was built. Where it differs from the plan, the
+reason is given.
+
+**1. The walker's cost in winter** (`world/LeafWalker`). Before a section
+is searched block by block, its blocks are counted in one pass over the
+section's own numbers (`PalettedContainer.count`, which walks the palette
+and the bit array, not 4,096 block states): how many bare blocks it holds,
+how many of those are at the wrong block for this date, and how many leaf
+blocks of a kind that sheds. A section whose count says that nothing is
+wrong is done at that. In winter, when nothing changes for weeks, that is
+what a round over a bare forest costs. The counters of the walker got
+names (`TO_BARE`, `TO_LEAF`, `CHUNKS_LOOKED`, `SECTIONS_SEARCHED`,
+`ROUNDS`, `NANOS`, `SECTIONS_COUNTED`, `SNOW_LANDED`, `FRUIT_DROPPED`),
+because the self test reads them by index.
+
+**2. Trees rest in winter** (new `world/TreeSeasons`). Foliage offers
+itself to Dynamic Trees as its season source
+(`SeasonCompatibilityHandler.registerSeasonManager("foliage", ...)`) and
+sets the manager when a server starts, because Dynamic Trees picks its
+source whenever it reads its own settings, which can be after Foliage has
+started. Whether it listens is its own choice
+(`preferredSeasonMod`: `*` or `foliage`).
+
+The source keeps nothing at all: Dynamic Trees asks it from worldgen
+worker threads and in the client (the tooltip of a seed), so every answer
+is worked out from the date (Calendar) and the place. Where Seasons says
+there is no winter it answers with Dynamic Trees' own "no climate zone",
+which makes Dynamic Trees' own code give a factor of 1 all year: a hot
+biome needs no special case here. Where there is a winter, the three
+factors (growth, seeds, fruit) are Dynamic Trees' own curves of the year,
+so a tree pack that shifts a species' fruit season keeps working; and in
+winter all three are 0 unless `growthInWinter` is on.
+
+**3. Fruit** (`LeafWalker.settle`, `block/BareLeavesBlock.updateShape`).
+Fruit hangs under a leaf block and Dynamic Trees lets any leaf block hold
+it up, bare ones too, so it does not fall by itself. The walker drops it
+when the spot above it goes bare (`Growable.drop`, which is what the mod
+itself does when fruit is picked), and a fruit that Dynamic Trees puts
+under a block that is already bare is noticed by that block and dropped in
+the next tick.
+
+**4. Snow** (`LeafWalker.land`). Snow that lay on a leaf that goes bare is
+moved down to the first block that can hold it instead of being taken away
+(a decision not in the design doc): land that is caught up in winter would
+otherwise get its snow on the crowns, lose it with the leaves, and stand
+as a white forest on bare ground.
+
+**5. `/foliage restore`** (new `world/Restore`, new
+`command/FoliageCommand`). The plan said to load only chunks whose saved
+data names a bare block. Finding that out means reading and decompressing
+every chunk, which costs about as much as loading it, so instead only the
+4,096-byte header of each region file is read: it gives the list of chunks
+that were ever written, and those are swept, a few per tick (4 by default,
+1 to 64, within 20 ms of a tick), with a progress line every ten seconds.
+Land that is loaded needs no pass of its own, because the command switches
+`bareBlocks` off first and that starts a walker round over everything in
+reach. The sweep must not make new land: a chunk is loaded on its own; at
+the edge of written land the game may still generate a neighbour to light
+it, which is its own doing and gives the same land a visit would.
+
+**6. The leaves in the air** (new `client/fall/*`). Not a particle type of
+the mod's own, as the plan said: a particle type is an entry in a registry
+that a server and a client have to agree on, and these leaves are each
+player's own business. The client makes them itself and hands them to the
+game's particle engine.
+
+The pictures then had to move. The game only lets a mod's pictures into
+the particle atlas through such a type: the particle atlas is not among the
+atlases the model manager keeps, and asking it for a picture takes the
+client down (found by the first run of the self test, which crashed at the
+first leaf). So the four leaf pictures sit among the block pictures and are
+drawn the way the game draws the crumbs of a broken block
+(`ParticleRenderType.TERRAIN_SHEET`): cut out, with the block pictures
+bound.
+
+A leaf starts under a leaf block that is losing its leaves right now, in
+that tree's colour of the day, drifts down, swings in a widening circle,
+turns, and lies still for a moment on the ground. The places are drawn at
+random from the air around the player, as the game does for its own
+weather: a forest costs no more than a single tree. Outside the days when
+leaves fall nothing is looked at.
+
+**7. Distant Horizons** (new `compat/DistantHorizons`,
+`compat/DistantHorizonsLink`). Built as planned: the first class only asks
+whether the mod is installed, the second, which names its classes, is
+loaded by name and only then. It hands Distant Horizons the leaf block
+wherever a bare block stands, as that mod builds its own picture of a
+chunk, which covers every way into that picture. Compiled against an
+API-only jar; nothing of it is in Foliage's jar.
+
+It cannot be tried out here: there is no Distant Horizons jar in this
+container and the machine has no real graphics. The test is that a game
+without the mod is untouched (`distantHorizonsSleepsWithoutTheMod`), and
+the look of it on a real machine is open.
+
+**8. Measurements**: `docs/measurements.md`.
+
+**9. A flaky test found and fixed.** `stepByStepThroughAutumnAndSpring`
+walked the year in steps of two and asked for at least four steps with the
+crown partly bare. In spring the block comes back near the end of each
+spot's own change, so the swaps fall within about two days: at two steps a
+day, a plot where the scatter of the spots lines up gave three. It now
+walks every step and asks the question of the swaps themselves (at least
+four steps changed something, and no step swapped more than two thirds of
+the crown), which does not depend on where in the world the test plot
+lands. Seven runs in a row of the whole suite pass.
+
+**10. What the review found.** One separate pass against this plan and the
+design doc, in a fresh context, on the finished stage. Everything below is
+fixed and the suite was run again (57 tests, five of them new).
+
+Wrong behaviour:
+
+- **`/foliage restore` could make new land.** A region file's header names
+  the half-made chunks around the visited land as well as the finished
+  ones, and asking the game for one of those in full makes it: caves,
+  trees, light, and more half-made neighbours with it, so a sweep would go
+  on making land for as long as it ran. Every chunk is now opened at the
+  lowest step first (`ChunkStatus.EMPTY`), which only reads what is on
+  disk, and only a chunk that was written as a finished one is asked for in
+  full. No bare block can stand in a chunk that was never finished.
+- **The sweep changed chunks under the players' feet without telling
+  them.** `LeafWalker.sweep` wrote the blocks quietly but had no chunk
+  holder to tell, so a player watching a tree the sweep reached saw the old
+  crown until something else in that chunk changed. It now takes the holder
+  from the walker's own list of chunks in reach, as a walker round does.
+- **The world was not written before the sweep read the region files.** A
+  chunk that is loaded but that nobody watches any more would hold bare
+  blocks that no region header names, and would be written back with them
+  after the sweep had said the mod could be taken out. Each world is now
+  saved first.
+- **Snow came down by the order the blocks were looked at.** It stopped at
+  the first block below that was not air, even one that nothing rests on,
+  so snow could vanish under a bare block. It now falls past everything
+  that does not stop a body and comes to rest on the first block that can
+  hold it.
+- **The count of leaves in the air leaked when a player changed world.**
+  The game throws every particle away at a portal without telling the
+  particles, so the count kept leaves that were long gone and in the end
+  allowed none at all. The count now belongs to a world, held weakly, and
+  starts again when the world changes.
+- **The biome was read two different ways.** `TreeSeasons` read it with the
+  level's own cache, which on a worker thread makes that thread wait for
+  the server's thread (`ServerChunkCache.getChunk`), exactly what the
+  design says must not happen; and it read a different biome from the one
+  the leaf blocks go by. Both now read the stored biome in cubes of 4 by 4
+  by 4 blocks, and a worker thread of a server works it out from the
+  world's shape instead.
+- **`/foliage bare on` was allowed while a sweep ran**, which would have
+  left the land behind the sweep leafy and the land ahead of it bare. It is
+  refused now, and says what to do instead.
+- **Chunks that were loaded but out of the walker's reach were missed** by
+  a round, and the class notes said otherwise.
+- **The sweep's last report was short** by the chunks of its final tick.
+- Smaller: the date was read twice while working out the season, so a tree
+  asked in the moment of a midnight that ends a season could get one
+  season's number with the other's progress; `offer()` was not done again
+  when `seasonSource` was switched on; the answer Distant Horizons gives to
+  a sign-up was ignored, so a refused handler still counted as a link;
+  Foliage took Dynamic Trees' season source from another season mod without
+  saying so; two comments and one setting's description did not match what
+  the code does.
+
+Taste:
+
+- Fruit that has only just set is taken away quietly instead of broken: it
+  is worth nothing, and breaking it gave a crack and a puff of crumbs for
+  an empty hand.
+- Where the sweep leaves the light a shade too bright is written down in
+  `world/Restore`, with why it does not matter.
+
+Tests the review found missing, now written: the region header read from a
+region file written by hand (which is what decides whether the sweep makes
+land, and the one thing a test world cannot show, having no land nobody has
+visited); the whole way out as a player walks it (start, status, the
+refusal of `bare on`, a second start, stop, and `bare on` again); fruit
+appearing under a block that is already bare; snow falling past a bare
+block. A fifth new test measures what the winter shortcut saves, on the
+test server where nothing else is running: the same chunk looked at 700
+times while its sections are searched and 700 times while they are only
+counted (see `docs/measurements.md`). Three checks were tightened: the command test now counts the lines
+each branch says instead of letting one branch fail, the "marked to be
+written" check now marks the chunk as written first so that it can fail,
+and the tests read the walker's counters by name.
+
+A design decision of Claude's that is Lucas's to overrule: with
+`preferredSeasonMod = "*"`, which is Dynamic Trees' default and means "the
+first season mod that signed in", Foliage takes the source even when
+another season mod is installed, and says so in the log with the line to
+set to pick the other one. Dynamic Trees' own meaning would leave it to the
+order the mods happen to load in. Foliage wins because the leaves of the
+trees go by the Calendar date, and a tree that rested by another mod's
+reckoning would stand bare in the wrong week.
+
 ## Tests
 
 - **Game tests** (`./gradlew runGameTestServer`): the rules as pure checks,

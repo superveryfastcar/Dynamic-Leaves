@@ -1,5 +1,6 @@
 package io.github.superveryfastcar.foliage.block;
 
+import com.dtteam.dynamictrees.block.fruit.FruitBlock;
 import com.dtteam.dynamictrees.block.leaves.DynamicLeavesBlock;
 import com.dtteam.dynamictrees.block.leaves.LeavesProperties;
 import io.github.superveryfastcar.foliage.FoliageConfig;
@@ -17,6 +18,7 @@ import net.minecraft.world.level.BlockGetter;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.LevelAccessor;
 import net.minecraft.world.level.LevelReader;
+import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.SoundType;
 import net.minecraft.world.level.block.state.BlockBehaviour;
 import net.minecraft.world.level.block.state.BlockState;
@@ -317,19 +319,29 @@ public final class BareLeavesBlock extends DynamicLeavesBlock {
     }
 
     /**
-     * The game calls this whenever a block next to this one changes. If
-     * the new neighbor is a leaf block where the leaf calendar wants a
-     * bare one, Dynamic Trees has just put it there: a twig that grew
-     * into open air grows its leaves through the leaf block of its
-     * species, not through a bare block. The walker is told, and puts the
-     * spot right in the next tick.
+     * The game calls this whenever a block next to this one changes. Two
+     * things are caught here and handed to the walker, which puts them
+     * right in the next tick:
+     * <ul>
+     *   <li>The new neighbor is a leaf block where the leaf calendar
+     *       wants a bare one. Dynamic Trees has just put it there: a twig
+     *       that grew into open air grows its leaves through the leaf
+     *       block of its species, not through a bare block.</li>
+     *   <li>Fruit has appeared right under this block. Dynamic Trees
+     *       hangs fruit under any leaf, and to it this is one; but
+     *       nothing bears fruit where there are no leaves.</li>
+     * </ul>
      */
     @Override
     protected BlockState updateShape(BlockState state, Direction direction, BlockState neighborState, LevelAccessor level,
                                      BlockPos pos, BlockPos neighborPos) {
-        if (level instanceof ServerLevel serverLevel && neighborState.getBlock() instanceof DynamicLeavesBlock other
-                && !(other instanceof BareLeavesBlock)) {
-            LeafWalker.noticed(serverLevel, neighborPos, neighborState);
+        if (level instanceof ServerLevel serverLevel) {
+            Block neighbor = neighborState.getBlock();
+            if (neighbor instanceof DynamicLeavesBlock && !(neighbor instanceof BareLeavesBlock)) {
+                LeafWalker.noticed(serverLevel, neighborPos, neighborState);
+            } else if (direction == Direction.DOWN && neighbor instanceof FruitBlock) {
+                LeafWalker.fruitAppeared(serverLevel, neighborPos);
+            }
         }
         return super.updateShape(state, direction, neighborState, level, pos, neighborPos);
     }

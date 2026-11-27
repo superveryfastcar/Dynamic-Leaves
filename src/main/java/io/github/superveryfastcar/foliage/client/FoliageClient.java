@@ -2,6 +2,7 @@ package io.github.superveryfastcar.foliage.client;
 
 import io.github.superveryfastcar.foliage.Foliage;
 import io.github.superveryfastcar.foliage.block.BareLeavesBlock;
+import io.github.superveryfastcar.foliage.client.fall.FallingLeaves;
 import io.github.superveryfastcar.foliage.client.model.LeafModels;
 import io.github.superveryfastcar.foliage.client.sprite.LeafPartsSource;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -19,8 +20,8 @@ import net.neoforged.neoforge.client.gui.IConfigScreenFactory;
 
 /**
  * The part of Foliage that only exists in a game with a screen: the
- * player's settings, the leaf pictures, the leaf models and the player's
- * leaf clock. A server without a screen never loads this class.
+ * player's settings, the leaf pictures, the leaf models, the player's
+ * leaf clock and the leaves that drift down in autumn. A server without a screen never loads this class.
  */
 @Mod(value = Foliage.MOD_ID, dist = Dist.CLIENT)
 public final class FoliageClient {
@@ -49,6 +50,10 @@ public final class FoliageClient {
         NeoForge.EVENT_BUS.addListener(ClientLeafClock::onTick);
         NeoForge.EVENT_BUS.addListener(ClientLeafClock::onLoggingOut);
 
+        // The leaves that drift down from the crowns while the leaves fall.
+        NeoForge.EVENT_BUS.addListener(FallingLeaves::onTick);
+        NeoForge.EVENT_BUS.addListener(FallingLeaves::onLoggingOut);
+
         // Adds a "Config" button for Foliage in the game's Mods screen,
         // using NeoForge's built-in settings screen. The labels come from
         // the language file (foliage.configuration.*).
@@ -76,5 +81,6 @@ public final class FoliageClient {
             return;
         }
         LeafModels.setSettings(FoliageClientConfig.shapeSettings());
+        FallingLeaves.setSettings(FoliageClientConfig.fallSettings());
     }
 }

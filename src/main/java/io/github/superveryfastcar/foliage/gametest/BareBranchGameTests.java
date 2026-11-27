@@ -652,34 +652,72 @@ public final class BareBranchGameTests {
         // Autumn: from before the first leaf falls to the first day of winter.
         long[] counted = walker.counters();
         int bare = 0;
-        int partSteps = 0;
+        int[] spread = new int[2];
         long from = LeafCalendarGameTests.stepOn(RULES, YEAR, Season.AUTUMN, 4);
         long to = LeafCalendarGameTests.stepOn(RULES, YEAR, Season.WINTER, 1);
-        for (long step = from; step <= to; step += 2) {
+        for (long step = from; step <= to; step++) {
             int now = oneStep(tree, look, summer, spots, step);
             check(now >= bare, "in autumn no spot gets its leaf block back, at step " + step + ": " + now + " after " + bare);
+            note(spread, bare, now, spots.size());
             bare = now;
-            partSteps += bare > 0 && bare < spots.size() ? 1 : 0;
         }
         check(bare == spots.size(), "by winter every spot of the " + tree.species + " holds its bare block: " + bare + " of " + spots.size());
-        check(partSteps >= 4, "the blocks go a few at a time, not all at once: " + partSteps + " steps with the crown partly bare");
+        int autumnSteps = spread[STEPS];
+        int autumnMost = spread[MOST];
+        gradual(tree, spread, spots.size(), "the blocks go bare");
         long[] afterAutumn = walker.counters();
         check(afterAutumn[0] - counted[0] == spots.size() && afterAutumn[1] == counted[1], "each spot was swapped exactly once in autumn");
 
         // Spring: from the last day of winter until all leaves are back.
-        partSteps = 0;
+        spread = new int[2];
         from = LeafCalendarGameTests.stepOn(RULES, YEAR, Season.WINTER, 13);
         to = LeafCalendarGameTests.stepOn(RULES, YEAR, Season.SPRING, 9) + LeafCalendarGameTests.stepsPerYear(RULES, YEAR);
-        for (long step = from; step <= to; step += 2) {
+        for (long step = from; step <= to; step++) {
             int now = oneStep(tree, look, summer, spots, step);
             check(now <= bare, "in spring no spot goes bare again, at step " + step + ": " + now + " after " + bare);
+            note(spread, bare, now, spots.size());
             bare = now;
-            partSteps += bare > 0 && bare < spots.size() ? 1 : 0;
         }
         check(bare == 0 && crown(tree).equals(summer), "when spring is over the " + tree.species + " is exactly as it was in summer");
-        check(partSteps >= 4, "the leaves come back a few at a time: " + partSteps + " steps with the crown partly bare");
+        gradual(tree, spread, spots.size(), "the leaves come back");
         long[] afterSpring = walker.counters();
         check(afterSpring[1] - afterAutumn[1] == spots.size() && afterSpring[0] == afterAutumn[0], "each spot was swapped back exactly once in spring");
+        Foliage.LOGGER.info("Foliage test: the {} swapped its {} spots over {} steps in autumn ({} at the busiest) "
+                        + "and {} steps in spring ({} at the busiest)",
+                tree.species, spots.size(), autumnSteps, autumnMost, spread[STEPS], spread[MOST]);
+    }
+
+    /** Where {@link #note} keeps how many steps changed something, and the most one step changed. */
+    private static final int STEPS = 0;
+    private static final int MOST = 1;
+
+    /**
+     * Counts one step of {@link #throughAutumnAndSpring} into {@code spread}:
+     * how many steps swapped at least one spot, and how many spots the
+     * busiest step swapped.
+     */
+    private static void note(int[] spread, int before, int now, int all) {
+        int moved = Math.abs(now - before);
+        if (moved > 0) {
+            spread[STEPS]++;
+            spread[MOST] = Math.max(spread[MOST], moved);
+        }
+    }
+
+    /**
+     * Checks that a crown changed over a good part of its window and not
+     * in one go. The numbers are kept well below what the rule gives, so
+     * that the test does not depend on where in the world the tree stands:
+     * the delay of a place and the scatter of a spot
+     * ({@link io.github.superveryfastcar.foliage.season.SeasonSettings#shiftDays},
+     * {@link io.github.superveryfastcar.foliage.season.TreeOrder}) make the
+     * exact numbers differ from plot to plot.
+     */
+    private static void gradual(Tree tree, int[] spread, int all, String what) {
+        check(spread[STEPS] >= 4, "on the " + tree.species + " " + what + " a few at a time, not all at once: "
+                + spread[STEPS] + " steps swapped a spot");
+        check(spread[MOST] <= all * 2 / 3, "and no single step swaps most of the crown at once: "
+                + spread[MOST] + " of " + all + " spots");
     }
 
     /**
@@ -755,8 +793,15 @@ public final class BareBranchGameTests {
             check(bareCount(crown.values()) == crown.size(), "a tick later every spot of the grown crown is bare: "
                     + (crown.size() - bareCount(crown.values())) + " leaf blocks left of " + crown.size());
             check(walk(level, crown.keySet()) == 0, "and a look at the chunks finds nothing to swap");
-            // Somebody puts a leaf block into the bare crown.
-            Map.Entry<BlockPos, BlockState> spot = crown.entrySet().iterator().next();
+            // Somebody puts a leaf block into the bare crown. It is put in
+            // next to a bare block, because that is what notices it: the
+            // bare block is told that a leaf block has appeared beside it
+            // and has its chunk looked at first thing in the next tick. A
+            // spot with no bare neighbor would only be put right by the
+            // next round over the chunks in reach, which is not what this
+            // test is about.
+            Map.Entry<BlockPos, BlockState> spot = besideABareBlock(level, crown);
+            check(spot != null, "the grown crown has a spot with a bare block next to it");
             planted[0] = spot.getKey();
             counted[0] = walker.counters();
             level.setBlock(planted[0], Twins.swap(spot.getValue(), Twins.twinOf(spot.getValue().getBlock())), 3);
@@ -765,7 +810,8 @@ public final class BareBranchGameTests {
 
         later(helper, 6, tree, () -> {
             check(level.getBlockState(planted[0]).getBlock() instanceof BareLeavesBlock, "a tick later the walker has made it bare");
-            check(walker.counters()[0] - counted[0][0] == 1, "and has swapped nothing else");
+            check(walker.counters()[LeafWalker.TO_BARE] - counted[0][LeafWalker.TO_BARE] == 1,
+                    "and has swapped nothing else");
             // Spring comes: the leaves are back on all that grew, and the tree stays whole when it ages.
             Map<BlockPos, BlockState> crown = crown(tree);
             Map<BlockPos, Integer> held = support(tree);
@@ -775,6 +821,25 @@ public final class BareBranchGameTests {
             tidy(tree);
             helper.succeed();
         });
+    }
+
+    /**
+     * One spot of a crown that has a bare block right next to it, or null
+     * if no spot has. A leaf block put there is noticed by that bare block
+     * ({@code BareLeavesBlock.updateShape}), which is the way back into
+     * step for a block that something else puts into a bare crown.
+     */
+    @Nullable
+    private static Map.Entry<BlockPos, BlockState> besideABareBlock(ServerLevel level,
+                                                                    Map<BlockPos, BlockState> crown) {
+        for (Map.Entry<BlockPos, BlockState> spot : crown.entrySet()) {
+            for (Direction side : Direction.values()) {
+                if (level.getBlockState(spot.getKey().relative(side)).getBlock() instanceof BareLeavesBlock) {
+                    return spot;
+                }
+            }
+        }
+        return null;
     }
 
     /**

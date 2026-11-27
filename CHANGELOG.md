@@ -3,6 +3,43 @@
 All notable changes to Foliage, newest first. The version numbers are
 explained in the README under "Versions".
 
+## 0.4.0
+
+The rest of the year: the air, the tree itself, and the way out.
+
+- Single leaves drift down from the crowns while the leaves fall, in each
+  player's own game: in the color that tree has that day, turning as they
+  sink and lying still for a moment on the ground. Nothing is sent and
+  nothing is stored, and outside the days when leaves fall nothing is
+  looked at. New settings in `config/foliage-client.toml`, section
+  `fallingLeaves`: `fallingLeaves`, `amount`, `distance`, `most`. The
+  game's own particle setting is followed.
+- Foliage tells Dynamic Trees what the season is: in winter a tree rests
+  (no growth, no seeds, and fruit that still hangs withers), outside winter
+  Dynamic Trees' own curves of the year decide, and where Seasons says
+  there is no winter the trees grow and bear all year. New settings in
+  `config/foliage-common.toml`, section `trees`: `seasonSource` and
+  `growthInWinter`. Which seasons mod Dynamic Trees listens to stays its
+  own choice (`preferredSeasonMod`).
+- Fruit under a leaf spot that goes bare drops to the ground instead of
+  hanging in a bare crown, and snow that lay on the crown falls down to
+  the first block that can hold it, so the snow of a winter forest lies on
+  the floor.
+- `/foliage restore` gives a whole world its leaf blocks back, a few chunks
+  per tick, including land nobody visits. It is the way to take the mod out
+  of a world. Also `/foliage status` and `/foliage bare on|off`.
+- Distant Horizons: far crowns keep their leaves all year, so a forest in
+  the distance is whole instead of a patchwork of what someone happened to
+  see in winter. Nothing of Distant Horizons is changed, and nothing it has
+  stored is written.
+- A round of the server over land that is already bare now counts the
+  blocks of a chunk section in one pass instead of searching it, which is
+  what the weeks of winter cost.
+- Foliage reads the biome the same way everywhere now (as the game stores
+  it, in cubes of 4 by 4 by 4 blocks), so a tree never rests in a wood
+  whose leaves stay, and a worker thread of a server never waits for the
+  server's own thread to hand it a chunk.
+
 ## 0.3.0
 
 Real bare branches.

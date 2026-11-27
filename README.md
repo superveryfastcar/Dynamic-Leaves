@@ -4,9 +4,9 @@ Leaves with depth for the trees of Dynamic Trees, and a year for them to live th
 
 Foliage is a mod for **Minecraft 1.21.1 on NeoForge** (built against NeoForge 21.1.267). It is an addon for [Dynamic Trees](https://modrinth.com/mod/dynamictrees) 1.7.2 and needs the [Calendar](https://github.com/superveryfastcar/Calendar) and Seasons mods.
 
-> **Version 0.3.0 is the third of four steps.** It makes bare trees really bare: while a leaf spot has no leaves, its leaf block is swapped for an empty stand-in that lets light, weather and players through. Falling leaves and snow on crowns come with the next step (see [Roadmap](#roadmap)).
+> **Version 0.4.0 is the last of four steps.** It gives the trees the rest of their year: single leaves drift down from the crowns while the leaves fall, a tree rests in winter and bears its fruit in season, snow that lay on a crown falls to the ground with the leaves, far crowns keep their leaves all year under Distant Horizons, and `/foliage restore` gives a whole world its leaf blocks back.
 >
-> **From this version on, every player needs Foliage to join a server that has it**, because the stand-ins are blocks of the mod. Read [Taking the mod out of a world](#taking-the-mod-out-of-a-world) before you remove it.
+> **Every player needs Foliage to join a server that has it**, because the bare blocks are blocks of the mod. Read [Taking the mod out of a world](#taking-the-mod-out-of-a-world) before you remove it.
 
 - [What it does](#what-it-does): for players and pack makers
 - [Settings](#settings): each player's own, and the rules of the world
@@ -82,6 +82,37 @@ The server swaps the blocks a little at a time, the trees nearest to the players
 
 Every plain kind of Dynamic Trees leaves has a bare block, also those of addons. Palm fronds and the wart blocks of the Nether trees have none; if they are listed to shed, they change their look only.
 
+### Leaves in the air
+
+While the leaves fall, single leaves drift down out of the crowns around you: they start under a leaf block that is losing its leaves right now, in the color that tree has that day, turn as they sink, swing a little wider as they go, and lie still for a moment on the ground before they vanish. Nothing of this is sent anywhere and nothing is stored; each player's game finds its own leaves in the air around the player, so a forest costs no more than a single tree.
+
+Outside the days when leaves fall nothing is looked at at all. Within them, the game's own particle setting is followed: "decreased" halves the leaves, "minimal" switches them off. How many there are, how far they start and how many may be in the air at once are settings ([`fallingLeaves`](#the-look-configfoliage-clienttoml)), and a player who wants none switches them off.
+
+### The year of the tree itself
+
+Foliage tells Dynamic Trees what the season is, so the trees live by the same calendar as their leaves:
+
+- **In winter a tree rests.** Nothing grows, no seed falls from a crown by itself, and fruit that still hangs withers and drops. A setting (`growthInWinter`) lets trees grow all winter for anyone who would rather have that.
+- **Outside winter** Dynamic Trees' own curves of the year decide, as they do with any seasons mod: growth is strongest in spring and summer, seeds fall mostly in autumn, and each fruit has its own best season.
+- **Where there is no winter** (deserts, jungles, savannas, anywhere Seasons says so) trees grow and bear all year, exactly as in a game without seasons.
+- Dynamic Trees decides for itself which mod it listens to. Its setting `preferredSeasonMod` in `config/dynamictrees-common.toml` is `*` by default, which means the first seasons mod that is installed; `foliage` names Foliage. With another seasons mod installed as well, set it to the one you want. Foliage's own side can be switched off with `seasonSource`.
+
+**Fruit and snow on a spot that goes bare.** Fruit hangs under a leaf block. When that block goes bare its fruit falls to the ground as a dropped item instead of hanging in a bare crown, and snow that lay on the crown falls down to the first block that can hold it, so the snow of a winter forest lies on the ground and not in the air. Snow does not settle on bare crowns while they are bare.
+
+### The command
+
+`/foliage` is for the owner of a world or an operator of a server (permission level 2):
+
+| Command | What it does |
+| --- | --- |
+| `/foliage status` | Where the leaf calendar stands, and what the server has done to the blocks of this world so far. |
+| `/foliage bare on` / `off` | Switches `bareBlocks` on or off and writes it to the settings file. `on` is refused while a sweep runs. |
+| `/foliage restore` | Gives every chunk that was ever written to disk its leaf blocks back, a few chunks per tick, and says how far it is while it runs. Switches `bareBlocks` off first. |
+| `/foliage restore <chunks>` | The same with another number of chunks per tick, 1 to 64 (4 by default). |
+| `/foliage restore status` / `stop` | How far the sweep is, and stopping it. |
+
+`/foliage restore` is what to run before the mod is taken out of a world (see [Taking the mod out of a world](#taking-the-mod-out-of-a-world)). It loads and saves every chunk of the world, which takes a while and makes the world folder grow a little, and the server stays playable while it runs.
+
 ### Fewer faces than plain cubes
 
 The unmodded game draws 6 faces for every leaf block, also the ones buried in the crown. Foliage never draws more than 6 for any leaf block (with the default settings), and for most far fewer. Measured on full-grown trees of Dynamic Trees, standing alone, in faces per leaf block:
@@ -112,7 +143,7 @@ The costliest days are the middle of the week of new leaves in spring: young lea
 
 Where leaves cannot be see-through (the game's "fast" graphics, or Sodium's fast leaves), Foliage draws only the outside of the crowns: about 2 faces per leaf block instead of 6. The last leaves of autumn and the first of spring are not drawn there (a few leaves cannot be shown without see-through pictures).
 
-Nothing in the world changes: this version only changes how leaves are drawn. Worlds can be opened without the mod again at any time.
+The leaves in the air cost about as much as light rain at the default settings, and nothing at all outside the days when leaves fall.
 
 ---
 
@@ -139,9 +170,18 @@ Each player's own.
 | `firstSize` | `8` | The size of the clump of first leaves in spring. |
 | `halfSize` | `12` | The size of the clump of half-grown leaves. |
 
+The leaves that drift down while the leaves fall have their own section, `fallingLeaves`:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `fallingLeaves` | `true` | `false`: no leaves in the air, and nothing is looked at. |
+| `amount` | `3` | How many leaves fall, 1 (a few) to 10 (a shower). |
+| `distance` | `24` | How far from the player leaves start, in blocks, 8 to 48. |
+| `most` | `200` | How many leaves may be in the air at once, 0 to 2000. The game's own weather holds a few hundred raindrops, so 200 leaves cost about as much as light rain. |
+
 ### The rules of the world: `config/foliage-common.toml`
 
-The file has two sections.
+The file has three sections.
 
 **`leafCalendar`**: when the leaves fall and come back, and for which trees. On a server these are the server's: it sends them to every player who joins, and again when the file changes. Days are days of the Calendar mod, and parts of a day are allowed.
 
@@ -179,15 +219,21 @@ If the fall or the return is set longer than autumn or spring are in the Calenda
 | `twigsBurn` | `5` | How easily fire eats a bare block, 0 to 300. A log has 5, leaves have 30 to 60. With 0 bare blocks never burn, and fire cannot reach the twigs and branches inside a bare crown. |
 | `twigsSpreadFire` | `0` | How easily fire starts in the open air next to a bare block, 0 to 300. A log has 5, leaves have 30 to 60. With 0 fire does not jump along the outside of a bare crown, though it can still eat its way in. |
 
+**`trees`**: what the season does to the trees themselves, not to their leaves. Only the server reads these.
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `seasonSource` | `true` | `true`: Foliage tells Dynamic Trees what the season is, so its trees rest in winter and bear fruit in season. `false`: Dynamic Trees is left as it is. |
+| `growthInWinter` | `false` | `true`: trees grow, drop seeds and bear fruit in winter as in the rest of the year. `false`: in winter a tree rests. Only where there is a winter, and only with `seasonSource`. |
+
 ### Taking the mod out of a world
 
 Bare blocks are blocks of Foliage. If the mod is removed while a world holds them, the game turns them into air, and Dynamic Trees then lets the twigs of those trees rot and grow anew. To avoid that:
 
-1. Set `bareBlocks = false` (or wait for summer, when no tree holds a bare block).
-2. Visit your land. The server gives the leaf blocks back in every chunk that comes into view of a player, within a few seconds.
-3. Then remove the mod.
+1. Run `/foliage restore`. It switches the bare blocks off and then gives every chunk that was ever written to disk its leaf blocks back, a few chunks per tick. It says how far it is while it runs, and you can keep playing.
+2. Wait for the line that says it is done, then remove the mod.
 
-Chunks that nobody visits in between keep their bare blocks. A command that restores a whole world at once is planned for 0.4.0.
+In summer there is nothing to do: no tree holds a bare block then. The sweep loads and saves every chunk of the world, so it takes a while on a world that has been played for long, and the world folder grows a little.
 
 ---
 
@@ -197,8 +243,8 @@ Chunks that nobody visits in between keep their bare blocks. A command that rest
 - **Seasons** (0.4.0 or newer): gives the leaf colors, and says where there is a winter. Seasons' own look of thinning trees is switched off for the leaves Foliage draws, so the two do not thin the same tree twice. The game's own leaf blocks (not Dynamic Trees) are still Seasons' to draw.
 - **Calendar**: gives the days. Without a calendar for a world (before its date has arrived from the server) every tree is drawn in full leaf.
 - **On a server**: the server and every player need Foliage. The server holds the rules of the leaf calendar, sends them to the players and swaps the blocks of bare trees. A player with Foliage can still join a server without it; the trees then go through the year as a look only, by the rules of the player's own file.
-- **Snow mods and falling snow**: snow cannot lie on a bare crown, because nothing rests on a bare block. It falls through to the ground. Snow on the branches of bare trees is planned for 0.4.0.
-- **Distant Horizons**: not tested with bare blocks yet. That is part of 0.4.0.
+- **Snow mods and falling snow**: snow cannot lie on a bare crown, because nothing rests on a bare block. Snow that lay on a crown falls down with the leaves to the first block that can hold it, so a winter forest has its snow on the ground. Snow mods that lay snow on blocks (Snow! Real Magic and the like) are not hindered: they simply find nothing to lay it on up there.
+- **Distant Horizons**: far crowns keep their leaves all year. Distant Horizons builds its own picture of the land from the blocks of a chunk and keeps it for land nobody has been near for months, so bare blocks would make a patchwork of it: bare where someone happened to walk in winter, leafy everywhere else. Foliage hands it the leaf block wherever a bare block stands, as it builds that picture. Nothing of Distant Horizons is changed and nothing it has stored is written. Up close the crowns are bare as they should be; a season color of its own for far crowns is a later step.
 - **Resource packs**: the leaf cards and the pictures of thinned, last, young and half-grown leaves are made from whatever leaf textures are loaded, so a pack that changes the leaves changes them all. Animated or non-square leaf textures get none of them: such trees still go through the year (fewer and smaller pieces, then twigs), but with their one full picture.
 - **Fast graphics** (leaves that are not see-through): crowns are drawn from their outside only. Thinned leaves are shown as full ones, and the last leaves of autumn and the first of spring are not drawn.
 - **Leaves from other mods** (addons of Dynamic Trees): get outer faces, planes and clumps by themselves if they are drawn as a plain cube with one texture. For leaf cards and matching twigs, list the texture in a file `assets/minecraft/atlases/blocks.json` of a resource pack or mod:
@@ -231,10 +277,12 @@ Chunks that nobody visits in between keep their bare blocks. A command that rest
 | --- | --- |
 | 0.1.0 | Leaf shapes. |
 | 0.2.0 | The leaf calendar as a look: leaves thin out and fall over the last days of autumn, bare twigs in winter, buds and young leaves over the first days of spring, in the new shapes. |
-| 0.3.0 | Real bare branches (this version): leaf blocks of bare trees are swapped for an empty stand-in, so rain, snow, light and players pass through winter crowns. |
-| 0.4.0 | Falling leaves, snow on the branches of bare trees, trees that rest in winter (no growth unless a setting allows it) and bear fruit in its season, a command to restore a whole world, measurements in large forests and with Distant Horizons. |
+| 0.3.0 | Real bare branches: leaf blocks of bare trees are swapped for an empty stand-in, so rain, snow, light and players pass through winter crowns. |
+| 0.4.0 | The rest of the year (this version): leaves that drift down while they fall, trees that rest in winter and bear fruit in season, fruit and snow that come down with the leaves, `/foliage restore`, and far crowns that keep their leaves under Distant Horizons. |
 
-The whole design is in `docs/build-plan.md` and the design document it links to.
+Ideas for later: a season color of its own for the far crowns of Distant Horizons, and leaves that gather on the ground.
+
+The whole design is in `docs/build-plan.md` and the design document it links to. What the mod costs, measured, is in `docs/measurements.md`.
 
 ---
 
@@ -250,7 +298,10 @@ The look happens in the game client while it builds the picture of a chunk. The 
 - `client.sprite` package: `LeafPartsSource`, an atlas source that makes the card pictures and the pictures of the year from the loaded leaf textures.
 - `client.ClientLeafClock`: looks at the calendar once a tick, swaps the clock when a step has passed and asks Seasons for a redraw when the look of any tree changed.
 - `block` package: the bare blocks. `BareLeavesBlock` is a leaf block of Dynamic Trees with everything a player could notice taken away. `BareLeavesProperties` is its "leaf kind" for Dynamic Trees and passes every question (tree family, how water spreads, how well it burns) on to the kind of the leaf it stands in for. `Twins` makes one bare block for every plain leaf kind when the game registers blocks, pairs them up and tells every tree species that the bare blocks are leaves of its own.
-- `world` package: `SpotRule` says which of its two blocks a leaf spot holds at a moment of the leaf calendar. `LeafWalker` (one per world, on the server) looks at the chunks in view of the players at every step of the calendar and swaps what is wrong, within the limits of `WalkSettings`.
+- `world` package: `SpotRule` says which of its two blocks a leaf spot holds at a moment of the leaf calendar. `LeafWalker` (one per world, on the server) looks at the chunks in view of the players at every step of the calendar and swaps what is wrong, within the limits of `WalkSettings`. `TreeSeasons` is the season Foliage hands to Dynamic Trees: plain arithmetic on the date and the place, with no state of its own, because Dynamic Trees asks from several threads. `Restore` is the sweep of `/foliage restore`: it reads the headers of the world's region files for the list of chunks that were ever written, and loads and sweeps a few of them per tick.
+- `command` package: `FoliageCommand`, the `/foliage` command.
+- `client.fall` package: the leaves that drift down in a player's game. `FallingLeaves` looks at a few places around the player at the end of every tick and starts a `FallingLeaf` under a leaf block that is losing its leaves; `FallSettings` are the player's settings for it.
+- `compat` package: `DistantHorizons` looks whether that mod is installed, and only then loads `DistantHorizonsLink`, which hands Distant Horizons the leaf block wherever a bare block stands while it builds its far picture.
 - `client.BareBlockStates`: a small resource pack made in memory that gives every bare block a block state file, so that the game does not report missing models. The models themselves are put in place by `LeafModels`: a bare block is drawn by the model of its leaf.
 - `network` package: the rules of the world, sent to players when they join and when the file changes.
 - `util` package: `PosHash`, fixed random numbers per position.
@@ -270,6 +321,15 @@ Things that are easy to get wrong:
 - The walker only touches chunks whose changes the server passes on to players (ticket level 32 or lower, which covers everything in view). A change to any other chunk would never reach a player's game that holds an old copy of it.
 - Dynamic Trees puts leaf blocks down itself: when a twig grows, when a sapling becomes a tree, when the supply of a leaf changes. Where that happens through a bare block, the block is asked which state to place and answers by the calendar. Where it happens through the species' own leaf block, a bare block next to the new leaf notices it and the walker puts the spot right in the next tick. Whatever is missed is found at the next step of the calendar.
 - The game works out which block a spot holds from the date alone, never from what was there before, so nothing has to be stored and a world can be opened at any date.
+- The walker counts the blocks of a section before it searches it. A section's palette is counted in one pass over its numbers (`PalettedContainer.count`), which is far cheaper than asking for every block of it; if the count says that no leaf and no bare block in it is at the wrong block for this date, the section is skipped. In winter, when nothing changes for weeks, that is what a round over a bare forest costs.
+- Dynamic Trees asks its seasons mod from worldgen worker threads and in the client (the tooltip of a seed), so `TreeSeasons` keeps nothing: it reads the date from the Calendar mod and the biome from the level and works the answer out each time. Where Seasons says there is no winter, it answers with Dynamic Trees' own "no climate zone", which makes Dynamic Trees' own code give a factor of 1 all year, instead of a special case here.
+- The biome is read as the game stores it, in cubes of 4 by 4 by 4 blocks (`getNoiseBiome`), which is the same reading the leaf blocks go by, so a tree never rests in a wood whose leaves stay. Reading the stored biome means reading the chunk, and a server hands a chunk out on its own thread only, so on a worker thread of a server the biome is worked out from the world's shape instead (`getUncachedNoiseBiome`), which is the same answer for land that is being made. Nothing here ever makes a worker thread wait for the server's thread.
+- Dynamic Trees picks its seasons mod when it loads its own settings, which can be after Foliage has started. The supplier is offered once while the game starts and the manager is set again when a server starts, so a late read of its settings finds Foliage.
+- Fruit hangs under a leaf block and is held up by any leaf block, bare ones too, so it does not fall by itself when its spot goes bare: the walker drops it, and a fruit that Dynamic Trees puts under a block that is already bare is noticed by that block and dropped in the next tick.
+- Snow on a crown that goes bare is not simply removed, or a forest that is caught up in winter would have no snow on its floor. It is moved down to the first block that can hold it.
+- `/foliage restore` must not make new land. A region file's header names the half-made chunks around the visited land as well as the finished ones, and asking the game for one of those in full makes it, with more half-made neighbors behind it, so a sweep would go on making land for as long as it ran. Every chunk is first opened at the lowest step (`ChunkStatus.EMPTY`), which only reads what is on disk and makes nothing, and only a chunk that was written as a finished one is asked for in full. No bare block can stand in a chunk that was never finished. Each world is written to disk before its region files are read, so that a chunk which is loaded but which nobody watches any more is swept too.
+- The leaves in the air are not a particle type of the mod's own: a particle type is an entry in a registry that a server and a client have to agree on, and these leaves are each player's own business. The client makes them itself and hands them to the game's particle engine. The game only lets a mod's pictures into the particle atlas through such a type, so the leaf pictures live among the block pictures and are drawn the way the game draws the crumbs of a broken block (`ParticleRenderType.TERRAIN_SHEET`): cut out, with the block pictures bound.
+- The link to Distant Horizons is called for every block of every chunk it takes in, on its own threads, about 100,000 times per chunk. The answer is one test of a block's class and, for a bare block, one lookup in a table that is written once per kind of block.
 
 ### Building
 
@@ -281,7 +341,9 @@ The jar is written to `build/libs/`. The build needs Java 21 and nothing else: D
 
 **Updating the libraries:** put the new jar into `libs/` under the name `<mod>-<version>.jar` and change the version in `gradle.properties`.
 
-The twig pictures are drawn by `tools/make_twigs.py` (Python 3 with Pillow). They are part of the repository; the script is only needed to change them.
+The twig pictures are drawn by `tools/make_twigs.py` and the pictures of the leaves in the air by `tools/make_leaf_particles.py` (Python 3 with Pillow). Both sets are part of the repository; the scripts are only needed to change them.
+
+Distant Horizons is only needed to build against, never at runtime: `libs/distanthorizons-api-3.3.3.jar` holds its API alone, nothing of it goes into Foliage's jar, and a game without the mod never loads the class that names it.
 
 ### Testing
 
@@ -289,7 +351,7 @@ The twig pictures are drawn by `tools/make_twigs.py` (Python 3 with Pillow). The
 ./gradlew runGameTestServer
 ```
 
-runs the automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits, and the bare blocks: a tree goes bare and back with nothing lost, grows in winter, is cut down bare, the light under it, places without a winter, and the limits per tick.
+runs the 57 automatic tests (the `gametest` package) on a server without a screen: the rules for every possible set of open sides, the leaf calendar step by step, real trees of every kind planted by command and taken through a whole year, with the faces per leaf block held against limits, the bare blocks (a tree goes bare and back with nothing lost, grows in winter, is cut down bare, the light under it, places without a winter, the limits per tick), and the year of the tree itself (the season Dynamic Trees is given, fruit and snow that come down with the leaves, the shortcut over land that is already bare and what it saves, measured, the whole way out of `/foliage restore` from start to stop, and the region header the sweep goes by, read from a region file written by hand).
 
 ```
 ./gradlew runClient -Pfoliage.selfTest=true
