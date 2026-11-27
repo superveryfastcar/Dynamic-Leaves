@@ -16,3 +16,6 @@ runs/
 .settings/
 bin/
 out/
+# Python caches of the scripts in tools/
+__pycache__/
+*.pyc
