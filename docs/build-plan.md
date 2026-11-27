@@ -947,7 +947,8 @@ oak, birch and tall birch planted as new land stand as their code says,
 with no wood on wood off the trunk, no limb sticking out, limbs on four
 heights or more and a crown; a young oak grown with 200 pulses has level
 limbs only; the setting off and on. `miniBranchBoxes` covers the upright
-kind.
+kind. The client self test passes on the new shapes (568 checks, 37
+looks photographed, a whole year).
 
 ## Tests
 
