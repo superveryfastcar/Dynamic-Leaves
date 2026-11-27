@@ -1,0 +1,18 @@
+# Build output and Gradle caches
+build/
+.gradle/
+# Development game folders created by runClient / runServer
+run/
+run-pack/
+runs/
+# IDE files
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+.classpath
+.project
+.settings/
+bin/
+out/

@@ -1,0 +1,22 @@
+{
+  "foliage.configuration.title": "Foliage",
+  "foliage.configuration.section.foliage.client.toml": "Leaves",
+  "foliage.configuration.section.foliage.client.toml.title": "Foliage: leaves",
+  "foliage.configuration.leaves": "Leaves",
+  "foliage.configuration.shape": "Crown shape",
+  "foliage.configuration.shape.plain": "Plain (unmodded)",
+  "foliage.configuration.shape.shell": "Shell",
+  "foliage.configuration.shape.bushy": "Bushy",
+  "foliage.configuration.shape.tufts": "Tufts",
+  "foliage.configuration.shape.mixed": "Mixed",
+  "foliage.configuration.fastLeaves": "Fewest faces",
+  "foliage.configuration.maxFaces": "Most faces per leaf block",
+  "foliage.configuration.numbers": "Numbers of the shapes",
+  "foliage.configuration.tipSides": "Open sides of a tip",
+  "foliage.configuration.clumpSides": "Open sides of an outermost tip",
+  "foliage.configuration.cardWidth": "Leaf card width",
+  "foliage.configuration.cardHeight": "Leaf card height",
+  "foliage.configuration.tuftSize": "Tufts: clump size",
+  "foliage.configuration.tipSize": "Tufts: outermost clump size",
+  "foliage.configuration.clumpSize": "Mixed: clump size"
+}

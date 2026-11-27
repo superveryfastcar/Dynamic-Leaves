@@ -1,0 +1,55 @@
+# Mod metadata read by NeoForge when the game starts.
+# The placeholders (dollar sign plus name in curly braces) are filled in from
+# gradle.properties during the build.
+modLoader="javafml"
+loaderVersion="${loader_version_range}"
+license="${mod_license}"
+# Where to report problems. Shown in the game's mod list.
+issueTrackerURL="https://github.com/superveryfastcar/Foliage/issues"
+
+[[mods]]
+modId="${mod_id}"
+version="${mod_version}"
+displayName="${mod_name}"
+displayURL="https://github.com/superveryfastcar/Foliage"
+authors="${mod_authors}"
+description='''${mod_description}'''
+
+[[dependencies.${mod_id}]]
+    modId="neoforge"
+    type="required"
+    versionRange="${neo_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.${mod_id}]]
+    modId="minecraft"
+    type="required"
+    versionRange="${minecraft_version_range}"
+    ordering="NONE"
+    side="BOTH"
+
+# Dynamic Trees: the trees whose leaves Foliage reshapes.
+[[dependencies.${mod_id}]]
+    modId="dynamictrees"
+    type="required"
+    versionRange="${dynamictrees_version_range}"
+    ordering="AFTER"
+    side="BOTH"
+
+# Calendar gives the date.
+[[dependencies.${mod_id}]]
+    modId="calendar"
+    type="required"
+    versionRange="${calendar_version_range}"
+    ordering="AFTER"
+    side="BOTH"
+
+# Seasons gives the leaf colors and says where there is a winter. Foliage
+# comes after it, so that it finds the leaf models as Seasons left them.
+[[dependencies.${mod_id}]]
+    modId="seasons"
+    type="required"
+    versionRange="${seasons_version_range}"
+    ordering="AFTER"
+    side="BOTH"

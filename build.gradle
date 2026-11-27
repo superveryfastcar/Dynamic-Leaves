@@ -1,0 +1,149 @@
+// ---------------------------------------------------------------------------
+// Build script for the Foliage mod (NeoForge 1.21.1).
+//
+// Common commands (run from this folder):
+//   ./gradlew build               builds the mod jar into build/libs/
+//   ./gradlew runClient           starts a development game client with
+//                                 Foliage, Dynamic Trees, Calendar and Seasons
+//   ./gradlew runServer           starts a development dedicated server
+//   ./gradlew runGameTestServer   runs the automatic tests (the gametest
+//                                 package) on a headless server and exits
+// ---------------------------------------------------------------------------
+plugins {
+    id 'java-library'
+    id 'idea'
+    // ModDevGradle: NeoForge's official plugin. It downloads Minecraft,
+    // makes its source readable and sets up the run configurations.
+    id 'net.neoforged.moddev' version '2.0.148'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    // The jar is named foliage-<version>.jar
+    archivesName = mod_id
+}
+
+// Minecraft 1.21.1 runs on Java 21.
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+repositories {
+    // Dynamic Trees, Calendar and Seasons are kept as jars in the libs folder
+    // of this project, so that a build needs nothing else: not on this
+    // computer and not on GitHub. See "Updating the libraries" in the README.
+    flatDir {
+        dirs 'libs'
+    }
+}
+
+dependencies {
+    // Compiled against, and loaded as mods in the development game. None of
+    // them is packed into Foliage's jar. Players install them as mods.
+    implementation "com.dtteam:dynamictrees:${dynamictrees_version}"
+    implementation "io.github.superveryfastcar.calendar:calendar:${calendar_version}"
+    implementation "io.github.superveryfastcar.seasons:seasons:${seasons_version}"
+}
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    runs {
+        client {
+            client()
+            // Unattended check of the client side: plants a fixed scene of
+            // trees, photographs it in every leaf shape and counts the faces
+            // drawn. See the dev package.
+            //   ./gradlew runClient -Pfoliage.selfTest=true
+            if (project.findProperty('foliage.selfTest') == 'true') {
+                systemProperty 'foliage.dev.selfTest', 'true'
+                programArguments.addAll '--width', '1600', '--height', '900'
+            }
+        }
+
+        server {
+            server()
+            programArgument '--nogui'
+        }
+
+        // Starts a server, runs every game test in the "foliage" namespace
+        // and exits with an error code if any test failed. Used to verify
+        // the mod automatically, without a human in the game.
+        //
+        // It runs in a folder of its own: the client's folder (run/) may
+        // hold client-only mods for the self test (Sodium in run/mods/),
+        // and a server cannot start with those.
+        gameTestServer {
+            type = "gameTestServer"
+            gameDirectory = project.file('run/gametest')
+            systemProperty 'neoforge.enabledGameTestNamespaces', project.mod_id
+        }
+
+        configureEach {
+            logLevel = org.slf4j.event.Level.INFO
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Fill in META-INF/neoforge.mods.toml from the values in gradle.properties,
+// so the version, name and description are only written in one place.
+// ---------------------------------------------------------------------------
+var generateModMetadata = tasks.register("generateModMetadata", ProcessResources) {
+    var replaceProperties = [
+            minecraft_version         : minecraft_version,
+            minecraft_version_range   : minecraft_version_range,
+            neo_version               : neo_version,
+            neo_version_range         : neo_version_range,
+            loader_version_range      : loader_version_range,
+            dynamictrees_version_range: dynamictrees_version_range,
+            calendar_version_range    : calendar_version_range,
+            seasons_version_range     : seasons_version_range,
+            mod_id                    : mod_id,
+            mod_name                  : mod_name,
+            mod_license               : mod_license,
+            mod_version               : mod_version,
+            mod_authors               : mod_authors,
+            mod_description           : mod_description
+    ]
+    inputs.properties replaceProperties
+    expand replaceProperties
+    from "src/main/templates"
+    into "build/generated/sources/modMetadata"
+}
+sourceSets.main.resources.srcDir generateModMetadata
+neoForge.ideSyncTask generateModMetadata
+
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+
+// Put the license into the jar so it travels with the mod, and leave the
+// automatic tests (with the empty test structure they use) and the other
+// development aids out of it. They are only needed during development.
+jar {
+    from('LICENSE') {
+        rename { "LICENSE_${mod_id}" }
+    }
+    exclude '**/gametest/**'
+    exclude '**/dev/**'
+    exclude "data/foliage/structure/**"
+}
+
+idea {
+    module {
+        downloadSources = true
+        downloadJavadoc = true
+    }
+}

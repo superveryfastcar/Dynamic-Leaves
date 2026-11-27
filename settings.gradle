@@ -1,0 +1,15 @@
+// Gradle settings for the Foliage mod.
+// Tells Gradle where to find the NeoForge build plugin (ModDevGradle).
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = 'https://maven.neoforged.net/releases' }
+    }
+}
+
+plugins {
+    // Lets Gradle download the right Java version by itself if it is missing.
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
+}
+
+rootProject.name = 'foliage'
