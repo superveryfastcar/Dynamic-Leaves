@@ -19,7 +19,7 @@ public enum LeafPicture {
     /** About half of the leaves gone. */
     THINNER("_foliage_thinner", "_foliage_card_thinner"),
 
-    /** A few last leaves. */
+    /** The last leaves: about a fifth of them, in the heart of the picture. */
     LAST("_foliage_last", null),
 
     /** The first small leaves of spring: few, and lighter than grown ones. */
@@ -97,25 +97,17 @@ public enum LeafPicture {
 
     /**
      * The picture a clump of leaves at a stage is drawn with. As
-     * {@link #forStage}, but for two stages:
-     * <ul>
-     *   <li>The last leaves of autumn are a small clump, and the clump
-     *       being small already says "few leaves". Drawn with the picture
-     *       of the last leaves on top of that, it would be a few specks in
-     *       the air. So it keeps the picture of the stage before.</li>
-     *   <li>A bud is a clump too, the smallest of all. It is drawn with
-     *       the lighter green of half-grown leaves, nearly without
-     *       holes.</li>
-     * </ul>
+     * {@link #forStage}, but for one stage: a bud is a clump too, the
+     * smallest of all, and it is drawn with the lighter green of
+     * half-grown leaves, nearly without holes.
+     *
+     * <p>A clump shows the middle of its picture, and the leaves of a
+     * picture go from the outside in ({@link LeafPictures}). So the small
+     * clump of last leaves, drawn with the picture of the last leaves, is
+     * a ragged tuft around the end of its twig and not a few specks in
+     * the air.</p>
      */
     public static LeafPicture forClump(LeafStage stage) {
-        switch (stage) {
-            case LAST:
-                return THINNER;
-            case BUDS:
-                return HALF;
-            default:
-                return forStage(stage);
-        }
+        return stage == LeafStage.BUDS ? HALF : forStage(stage);
     }
 }

@@ -864,6 +864,49 @@ public final class LeafCalendarGameTests {
                     check((pictures[4][i] & 0xFF) == Math.min(255, Math.round(red * shares.youngLight())), "young leaves are lighter by the set factor");
                 }
             }
+            // The leaves go from the outside in: of the leaves outside the heart of the picture more are gone than of those in it,
+            // in every picture, and the very middle is the last to go.
+            float middle = size / 2.0F;
+            float reach = shares.heart() * middle;
+            for (int number = 1; number < LeafPicture.COUNT; number++) {
+                int[] in = new int[2];
+                int[] out = new int[2];
+                for (int i = 0; i < texture.length; i++) {
+                    if (texture[i] >>> 24 == 0) {
+                        continue;
+                    }
+                    double far = Math.hypot(i % size + 0.5F - middle, i / size + 0.5F - middle);
+                    int[] where = far < reach / 2.0F ? in : far > reach ? out : null;
+                    if (where != null) {
+                        where[0]++;
+                        where[1] += pictures[number][i] >>> 24 != 0 ? 1 : 0;
+                    }
+                }
+                float keptIn = in[1] / (float) in[0];
+                float keptOut = out[1] / (float) out[0];
+                check(keptIn > keptOut + 0.15F, String.format(Locale.ROOT, "%s keeps the leaves in its heart longer than the outer ones: %.2f of the inner, %.2f of the outer",
+                        LeafPicture.byNumber(number), keptIn, keptOut));
+            }
+            // Without the weight, the order is Seasons' own; with all of it, no leaf of the heart goes before one outside it.
+            float[] plain = LeafPictures.fallOrder(texture, size, 11L);
+            check(LeafPictures.edgeOrder(plain, size, 0.0F, shares.heart()) == plain, "with no weight on the place the order is left as it is");
+            float[] strict = LeafPictures.edgeOrder(plain, size, 1.0F, shares.heart());
+            float lastOutside = -1.0F;
+            float firstInside = 2.0F;
+            for (int i = 0; i < texture.length; i++) {
+                if (Float.isNaN(plain[i])) {
+                    check(Float.isNaN(strict[i]), "what is no leaf has no turn");
+                    continue;
+                }
+                double far = Math.hypot(i % size + 0.5F - middle, i / size + 0.5F - middle);
+                if (far >= reach) {
+                    lastOutside = Math.max(lastOutside, strict[i]);
+                } else if (far < reach - 1.0F) {
+                    firstInside = Math.min(firstInside, strict[i]);
+                }
+            }
+            check(lastOutside < firstInside, "with all the weight on the place, every leaf outside the heart goes before those well inside it");
+
             // The cards thin with the leaves.
             int[] card = LeafPictures.card(LeafPicture.FULL, texture, size, 11L, shares);
             check(java.util.Arrays.equals(card, CardPicture.make(texture, size, 11L)), "the full card is the card of the texture");
@@ -884,7 +927,9 @@ public final class LeafCalendarGameTests {
             check((LeafPicture.byNumber(number).cardSuffix() != null) == (number < LeafPicture.CARD_COUNT), "the first pictures come with a card: " + number);
         }
         // The numbers of the pictures: in range and in order, and read from an atlas file with gaps.
-        PictureShares wild = new PictureShares(0.9F, 0.2F, -1.0F, 0.1F, 9.0F, 0.6F, Float.NaN);
+        PictureShares wild = new PictureShares(0.9F, 0.2F, -1.0F, 0.1F, 9.0F, 0.6F, Float.NaN, 7.0F, 0.0F);
+        check(wild.edge() == 1.0F && wild.heart() == PictureShares.MIN_HEART && shares.edge() == 0.6F && shares.heart() == 0.75F,
+                "how much the leaves go from the outside in, and the heart of a picture, in range: " + wild);
         check(wild.thin() == 0.9F && wild.thinner() == 0.9F && wild.last() == 0.9F, "autumn's pictures never gain leaves: " + wild);
         check(wild.halfGone() == 0.6F && wild.youngGone() == 0.6F, "young leaves are never more than half-grown ones: " + wild);
         check(wild.youngLight() == PictureShares.MAX_LIGHT && wild.halfLight() >= PictureShares.MIN_LIGHT, "lightness in range: " + wild);

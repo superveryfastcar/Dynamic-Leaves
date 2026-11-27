@@ -141,8 +141,8 @@ final class QuadMaker {
     /**
      * A clump: a small cube of leaves. It sits against one side of the
      * block (its anchor), in the middle of that side, or in the middle of
-     * the block if it has no anchor. Each of its faces shows the part of
-     * the leaf texture that lies there.
+     * the block if it has no anchor. Each of its faces shows the middle
+     * of the leaf picture ({@link #cube}).
      *
      * @param sprite the leaf texture
      * @param size   the side of the cube in pixels
@@ -198,8 +198,12 @@ final class QuadMaker {
     }
 
     /**
-     * A cube of leaves inside the block. Each of its faces shows the part
-     * of the leaf texture that lies there.
+     * A cube of leaves inside the block. Each of its faces shows the
+     * middle of the leaf picture, as much of it as the face is large,
+     * wherever in the block the cube sits. The leaves of a picture go
+     * from the outside in while they fall, so the middle is where its
+     * last leaves are: a small cube stays a tuft of leaves and does not
+     * end as a few specks from the picture's rim.
      *
      * @param lo where the cube starts along x, y and z, in pixels
      * @param hi where it ends
@@ -212,14 +216,21 @@ final class QuadMaker {
         float y1 = hi[1];
         float z0 = lo[2];
         float z1 = hi[2];
-        // Picture positions: across by x (or z on the west and east faces), down by height (or z on top and bottom).
-        float[] acrossX = {x0, x1, x1, x0};
-        float[] acrossZ = {z0, z1, z1, z0};
-        float[] downY = {16.0F - y0, 16.0F - y0, 16.0F - y1, 16.0F - y1};
-        float[] downZ = {z1, z1, z0, z0};
+        // Picture positions: across by x (or z on the west and east faces), down by height (or z on top and bottom),
+        // each measured from the middle of the picture.
+        float u0 = 8.0F - (x1 - x0) / 2.0F;
+        float u1 = 8.0F + (x1 - x0) / 2.0F;
+        float v0 = 8.0F - (y1 - y0) / 2.0F;
+        float v1 = 8.0F + (y1 - y0) / 2.0F;
+        float w0 = 8.0F - (z1 - z0) / 2.0F;
+        float w1 = 8.0F + (z1 - z0) / 2.0F;
+        float[] acrossX = {u0, u1, u1, u0};
+        float[] acrossZ = {w0, w1, w1, w0};
+        float[] downY = {v1, v1, v0, v0};
+        float[] downZ = {w1, w1, w0, w0};
         BakedQuad[] faces = new BakedQuad[6];
         faces[Direction.DOWN.ordinal()] = quad(sprite, new Vector3f[] {at(x0, y0, z0), at(x1, y0, z0), at(x1, y0, z1), at(x0, y0, z1)},
-                acrossX, new float[] {z0, z0, z1, z1}, tint, true, true);
+                acrossX, new float[] {w0, w0, w1, w1}, tint, true, true);
         faces[Direction.UP.ordinal()] = quad(sprite, new Vector3f[] {at(x0, y1, z1), at(x1, y1, z1), at(x1, y1, z0), at(x0, y1, z0)},
                 acrossX, downZ, tint, true, true);
         faces[Direction.NORTH.ordinal()] = quad(sprite, new Vector3f[] {at(x1, y0, z0), at(x0, y0, z0), at(x0, y1, z0), at(x1, y1, z0)},
