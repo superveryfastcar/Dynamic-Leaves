@@ -1,7 +1,7 @@
 {
   "sources": [
     {
-      "type": "foliage:leaf_parts",
+      "type": "dynamicleaves:leaf_parts",
       "leaves": [
         {"texture": "minecraft:block/oak_leaves"},
         {"texture": "minecraft:block/birch_leaves"},

@@ -1,10 +1,10 @@
 // ---------------------------------------------------------------------------
-// Build script for the Foliage mod (NeoForge 1.21.1).
+// Build script for the Dynamic Leaves mod (NeoForge 1.21.1).
 //
 // Common commands (run from this folder):
 //   ./gradlew build               builds the mod jar into build/libs/
 //   ./gradlew runClient           starts a development game client with
-//                                 Foliage, Dynamic Trees, Calendar and Seasons
+//                                 Dynamic Leaves, Dynamic Trees, Calendar and Seasons
 //   ./gradlew runServer           starts a development dedicated server
 //   ./gradlew runGameTestServer   runs the automatic tests (the gametest
 //                                 package) on a headless server and exits
@@ -21,7 +21,7 @@ version = mod_version
 group = mod_group_id
 
 base {
-    // The jar is named foliage-<version>.jar
+    // The jar is named dynamicleaves-<version>.jar
     archivesName = mod_id
 }
 
@@ -39,14 +39,14 @@ repositories {
 
 dependencies {
     // Compiled against, and loaded as mods in the development game. None of
-    // them is packed into Foliage's jar. Players install them as mods.
+    // them is packed into Dynamic Leaves' jar. Players install them as mods.
     implementation "com.dtteam:dynamictrees:${dynamictrees_version}"
     implementation "io.github.superveryfastcar.calendar:calendar:${calendar_version}"
     implementation "io.github.superveryfastcar.seasons:seasons:${seasons_version}"
 
     // Distant Horizons: only the doors it opens for other mods (its API),
-    // and only to compile against. Foliage runs with it and without it, and
-    // nothing of it is packed into Foliage's jar. The classes that use it
+    // and only to compile against. Dynamic Leaves runs with it and without it, and
+    // nothing of it is packed into Dynamic Leaves' jar. The classes that use it
     // are loaded only when Distant Horizons is installed
     // (compat.DistantHorizonsLink).
     compileOnly "com.seibel.distanthorizons:distanthorizons-api:${distant_horizons_version}"
@@ -66,21 +66,21 @@ neoForge {
             // Unattended check of the client side: plants a fixed scene of
             // trees, photographs it in every leaf shape and counts the faces
             // drawn. See the dev package.
-            //   ./gradlew runClient -Pfoliage.selfTest=true
-            if (project.findProperty('foliage.selfTest') == 'true') {
-                systemProperty 'foliage.dev.selfTest', 'true'
+            //   ./gradlew runClient -Pdynamicleaves.selfTest=true
+            if (project.findProperty('dynamicleaves.selfTest') == 'true') {
+                systemProperty 'dynamicleaves.dev.selfTest', 'true'
                 // Only some of the looks, for a quick set of pictures:
-                //   -Pfoliage.only=autumn-10,autumn-11,winter-1
-                if (project.findProperty('foliage.only') != null) {
-                    systemProperty 'foliage.dev.only', project.findProperty('foliage.only')
+                //   -Pdynamicleaves.only=autumn-10,autumn-11,winter-1
+                if (project.findProperty('dynamicleaves.only') != null) {
+                    systemProperty 'dynamicleaves.dev.only', project.findProperty('dynamicleaves.only')
                 }
                 programArguments.addAll '--width', '1600', '--height', '900'
             }
             // A photo session of tree shapes listed in a text file (see
             // DevTreeShow in the dev package and tools/limbs/layers.py):
-            //   ./gradlew runClient -Pfoliage.show=build/tree-show.txt
-            if (project.findProperty('foliage.show') != null) {
-                systemProperty 'foliage.dev.show', project.file(project.findProperty('foliage.show')).absolutePath
+            //   ./gradlew runClient -Pdynamicleaves.show=build/tree-show.txt
+            if (project.findProperty('dynamicleaves.show') != null) {
+                systemProperty 'dynamicleaves.dev.show', project.file(project.findProperty('dynamicleaves.show')).absolutePath
                 programArguments.addAll '--width', '1600', '--height', '900'
             }
         }
@@ -90,7 +90,7 @@ neoForge {
             programArgument '--nogui'
         }
 
-        // Starts a server, runs every game test in the "foliage" namespace
+        // Starts a server, runs every game test in the "dynamicleaves" namespace
         // and exits with an error code if any test failed. Used to verify
         // the mod automatically, without a human in the game.
         //
@@ -157,7 +157,7 @@ jar {
     }
     exclude '**/gametest/**'
     exclude '**/dev/**'
-    exclude "data/foliage/structure/**"
+    exclude "data/dynamicleaves/structure/**"
 }
 
 idea {

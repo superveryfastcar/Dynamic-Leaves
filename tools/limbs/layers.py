@@ -37,7 +37,7 @@ or to look at shapes without changing anything:
     python3 tools/limbs/layers.py preview <radius> <out.png> [species]   a sheet of drawings
     python3 tools/limbs/layers.py stats [species]                        counts per radius
     python3 tools/limbs/layers.py show <file> oak:5:0 oak:7:1 ...        a photo session in the game:
-        then ./gradlew runClient -Pfoliage.show=<file>
+        then ./gradlew runClient -Pdynamicleaves.show=<file>
         (add dates of the year as date=autumn-11; without any: summer 7 and winter 1)
 
 Needs Python 3 with the Pillow library for the pictures.
@@ -93,7 +93,7 @@ SHAPES['swamp_oak'] = SHAPES['oak']
 PER_RADIUS = 20
 #: Where the shapes go: one file per species, read by the mod's `tree.LayeredLimbs`.
 OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..',
-                       'src', 'main', 'resources', 'data', 'foliage', 'tree_shapes', 'dynamictrees')
+                       'src', 'main', 'resources', 'data', 'dynamicleaves', 'tree_shapes', 'dynamictrees')
 
 
 def _along(points, t):

@@ -1,4 +1,4 @@
-// Gradle settings for the Foliage mod.
+// Gradle settings for the Dynamic Leaves mod.
 // Tells Gradle where to find the NeoForge build plugin (ModDevGradle).
 pluginManagement {
     repositories {
@@ -12,4 +12,4 @@ plugins {
     id 'org.gradle.toolchains.foojay-resolver-convention' version '0.9.0'
 }
 
-rootProject.name = 'foliage'
+rootProject.name = 'dynamicleaves'

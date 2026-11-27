@@ -3,7 +3,7 @@
 The tree is drawn from a corner, slightly from above (an "isometric" view),
 block by block from the back to the front. Wood is drawn as thick as Dynamic
 Trees makes it, leaves as whole cubes. It is a rough look at the shape and
-the volume only: the real leaves, with Foliage's leaf shapes, are in the game.
+the volume only: the real leaves, with Dynamic Leaves' leaf shapes, are in the game.
 """
 
 from PIL import Image, ImageDraw

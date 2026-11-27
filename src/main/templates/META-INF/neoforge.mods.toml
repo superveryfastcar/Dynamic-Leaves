@@ -5,13 +5,13 @@ modLoader="javafml"
 loaderVersion="${loader_version_range}"
 license="${mod_license}"
 # Where to report problems. Shown in the game's mod list.
-issueTrackerURL="https://github.com/superveryfastcar/Foliage/issues"
+issueTrackerURL="https://github.com/superveryfastcar/Dynamic Leaves/issues"
 
 [[mods]]
 modId="${mod_id}"
 version="${mod_version}"
 displayName="${mod_name}"
-displayURL="https://github.com/superveryfastcar/Foliage"
+displayURL="https://github.com/superveryfastcar/Dynamic Leaves"
 authors="${mod_authors}"
 description='''${mod_description}'''
 
@@ -29,7 +29,7 @@ description='''${mod_description}'''
     ordering="NONE"
     side="BOTH"
 
-# Dynamic Trees: the trees whose leaves Foliage reshapes.
+# Dynamic Trees: the trees whose leaves Dynamic Leaves reshapes.
 [[dependencies.${mod_id}]]
     modId="dynamictrees"
     type="required"
@@ -45,7 +45,7 @@ description='''${mod_description}'''
     ordering="AFTER"
     side="BOTH"
 
-# Seasons gives the leaf colors and says where there is a winter. Foliage
+# Seasons gives the leaf colors and says where there is a winter. Dynamic Leaves
 # comes after it, so that it finds the leaf models as Seasons left them.
 [[dependencies.${mod_id}]]
     modId="seasons"

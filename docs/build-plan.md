@@ -1,11 +1,11 @@
-# Foliage: build plan
+# Dynamic Leaves: build plan
 
 Written 2026-11-27 before any code. The builder follows it and the reviewer
 checks the code against it. Design for the owner to read:
 https://claude.ai/artifact/AXZ8oBJWzArmH867JfoAE8
 
-Working name Foliage, mod id `foliage`, package
-`io.github.superveryfastcar.foliage`, MIT, author coolcritter22, NeoForge
+Working name Dynamic Leaves, mod id `dynamicleaves`, package
+`io.github.superveryfastcar.dynamicleaves`, MIT, author coolcritter22, NeoForge
 21.1.267 for Minecraft 1.21.1. Same build setup as Seasons. Needs Dynamic
 Trees 1.7.2 (`[1.7.2,1.8)`), Calendar 0.2.0 and Seasons, all from `libs/`.
 The name is on a decision card; a different answer means a rename before the
@@ -53,7 +53,7 @@ On decision cards (2026-11-27, open; built on Claude's pick until answered):
   placeholder with more twigs, or plain air.
 - Leaf shape: shell, bushy, tufts, mixed (pick). All four are built as a
   player setting, so the card only sets the default.
-- Name: Foliage (pick), Boughs, Deciduous, Branches.
+- Name: Dynamic Leaves (pick), Boughs, Deciduous, Branches.
 
 Claude's defaults, stated in the design doc under "Decided by default":
 oak (with apple oak and swamp oak), birch and dark oak shed; other Dynamic
@@ -88,7 +88,7 @@ falling leaves are particles.
 | 1 | 0.1.0 | Shapes: sprite source for leaf cards, shape rules, leaf model, wrapping of Dynamic Trees leaves, client settings | unit-style game tests of the rules, self test with pictures and face counts, with Sodium |
 | 2 | 0.2.0 | Leaf calendar: the look rule, thinned and small leaf sprites, twigs and buds, stages in the model, Seasons 0.4.0 API | game tests of the rule day by day, self test through the year |
 | 3 | 0.3.0 | Real blocks: a bare block per kind of leaves, swapped spot by spot as the leaf clock steps (as built below) | game tests that Dynamic Trees holds a bare crown and of every case below, self test through the year in a real client |
-| 4 | 0.4.0 | Finish: falling leaf particles, snow on bare crowns, season source for Dynamic Trees (no growth in winter, fruit in its season), `/foliage restore`, Distant Horizons with bare blocks, measurements in a real forest, helper review | measurements file, review findings fixed |
+| 4 | 0.4.0 | Finish: falling leaf particles, snow on bare crowns, season source for Dynamic Trees (no growth in winter, fruit in its season), `/dynamicleaves restore`, Distant Horizons with bare blocks, measurements in a real forest, helper review | measurements file, review findings fixed |
 | 5 | later | Far tree colors in Distant Horizons, falling tree, cherry blossom, leaf litter | each on the owner's word |
 
 ### Stage 1 parts, in build order
@@ -101,12 +101,12 @@ falling leaves are particles.
    shape. Pure code on ints, testable without a game.
 5. `client/model/QuadMaker`: pieces to `BakedQuad`s (outer face, inner plane,
    card, small cube, twig cross).
-6. `client/sprite`: sprite source `foliage:leaf_parts` that makes the round
+6. `client/sprite`: sprite source `dynamicleaves:leaf_parts` that makes the round
    card picture from whatever leaf texture is loaded (resource packs work).
 7. `client/model/LeafModel` and `LeafModels`: the wrapper and the wrapping at
    `ModelEvent.ModifyBakingResult` for every `DynamicLeavesBlock` whose model
    is a plain one-texture cube. Others are left alone and logged.
-8. `client/FoliageClientConfig`: shape, fast leaves, the numbers of the shapes.
+8. `client/DynamicLeavesClientConfig`: shape, fast leaves, the numbers of the shapes.
 9. `gametest` and `dev/DevSelfTest`.
 
 ### Tricky spots, stage 1
@@ -216,11 +216,11 @@ Decided while building, each for a reason seen in numbers or pictures:
   outside of the crown while full, thinning or half grown, and not at all
   as last or first leaves.
 - **Whose rules.** The rules of the world are the server's and are sent to
-  each player. A client that is sent none (a server without Foliage) uses
+  each player. A client that is sent none (a server without Dynamic Leaves) uses
   its own file instead of showing no year at all.
 - **Seasons 0.4.0** got four calls instead of a step listener:
   `SeasonsApi.hasWinter`, `SeasonsClientApi.requestRedraw`,
-  `withoutBareLeaves` and `leafSprite`. Foliage counts its own steps
+  `withoutBareLeaves` and `leafSprite`. Dynamic Leaves counts its own steps
   (`stepsPerDay`), so it does not depend on how often Seasons changes its
   colors.
 
@@ -263,8 +263,8 @@ What was built, and where it differs from the plan:
   the scruffy sort gets one, whether or not it sheds by today's settings:
   12 for Dynamic Trees alone. So the owner can put any kind on the list of
   kinds that shed without a new file, and an add-on's trees work without
-  one. Names: `foliage:bare_<path>`, for other mods
-  `foliage:bare_<namespace>_<path>`. They are written into worlds, so the
+  one. Names: `dynamicleaves:bare_<path>`, for other mods
+  `dynamicleaves:bare_<namespace>_<path>`. They are written into worlds, so the
   naming rule must never change. Kinds of another sort (palm
   fronds, for one) get none and never shed.
 - **A bare block passes every question on to its leaf kind**
@@ -301,7 +301,7 @@ What was built, and where it differs from the plan:
 
   A section is skipped by its palette of block kinds and of biomes alone
   when nothing in it can be wrong. Limits per tick are settings
-  (`foliage-common.toml`, section `bareBranches`): `bareBlocks` (on or
+  (`dynamicleaves-common.toml`, section `bareBranches`): `bareBlocks` (on or
   off), `chunksPerTick` 64, `changesPerTick` 300, `millisPerTick` 1.0.
 - **Quiet write:** `LevelChunk.setBlockState(pos, state, false)`, then
   `ChunkHolder.blockChanged(pos)` and `PathTypeCache.invalidate(pos)`.
@@ -369,7 +369,7 @@ cost that none of them is left.
 - **When to register the bare blocks.** NeoForge posts the registration
   event once per priority across all mods, not once per mod. Dynamic Trees
   loads its tree packs at normal priority and registers its leaf blocks at
-  lowest. Foliage therefore registers at lowest priority too, after
+  lowest. Dynamic Leaves therefore registers at lowest priority too, after
   Dynamic Trees in mod order: only then do the kinds exist. At normal
   priority it found 16 kinds and no block.
 - **Which chunks the walker may touch.** `ChunkHolder.blockChanged` sends
@@ -412,7 +412,7 @@ cost that none of them is left.
 - With the leaf calendar switched off, `bareBlocks = false`, or a kind
   taken off the list, the walker turns bare blocks back into leaves as
   chunks come into reach. That is also the way out before the mod is
-  removed (README, "Taking the mod out of a world"; `/foliage restore` in
+  removed (README, "Taking the mod out of a world"; `/dynamicleaves restore` in
   stage 4 for land nobody visits).
 - The leaf and its bare block must agree on "is there a winter here": both
   sides read the biome without the game's fuzzy borders
@@ -450,11 +450,11 @@ complicated ones are marked.
 | # | Part | Where | Complicated |
 |---|------|-------|-------------|
 | 1 | **Walker cost in winter.** Before a section is looked at block by block, count the blocks its list names (`PalettedContainer.count`): a section whose bare blocks are all right and that holds no leaf that sheds is done by the count alone. | `world/LeafWalker.look` | no |
-| 2 | **Trees rest in winter.** Foliage signs in as Dynamic Trees' season source (`SeasonCompatibilityHandler.registerSeasonManager("foliage", ...)`). The season comes from Calendar. Where Seasons says there is no winter, trees grow, drop seeds and bear fruit all year. Where there is one, Dynamic Trees' own curves apply (growth picks up through early spring and slows in late autumn, seeds mostly in autumn, fruit from spring to autumn), and in winter all three stand still unless the setting `growthInWinter` is on. | new `world/TreeSeasons`, `FoliageConfig`, `Foliage` | yes: threads (worldgen asks from worker threads), the client asks too (tooltips), which source wins when Serene Seasons is installed |
+| 2 | **Trees rest in winter.** Dynamic Leaves signs in as Dynamic Trees' season source (`SeasonCompatibilityHandler.registerSeasonManager("dynamicleaves", ...)`). The season comes from Calendar. Where Seasons says there is no winter, trees grow, drop seeds and bear fruit all year. Where there is one, Dynamic Trees' own curves apply (growth picks up through early spring and slows in late autumn, seeds mostly in autumn, fruit from spring to autumn), and in winter all three stand still unless the setting `growthInWinter` is on. | new `world/TreeSeasons`, `DynamicLeavesConfig`, `Dynamic Leaves` | yes: threads (worldgen asks from worker threads), the client asks too (tooltips), which source wins when Serene Seasons is installed |
 | 3 | **Fruit.** Fruit that hangs under a leaf block that goes bare drops off as if picked. Fruit that appears under a bare block is taken away in the next tick. | `LeafWalker.settle`, `BareLeavesBlock.updateShape` | no |
 | 4 | **Snow.** Snow that lay on a leaf that goes bare falls to whatever is below it in its column (the next leaf, a branch that can hold it, the ground) and lies there if snow can lie there and none lies there yet. Checked with Seasons' snowfall, its catch-up and Snow! Real Magic. | `LeafWalker.settle` | yes: order against Seasons' catch-up, heightmaps |
-| 5 | **`/foliage restore`.** Switches `bareBlocks` off, then turns every bare block of the world back into its leaf: loaded land through the walker, land on disk chunk by chunk (only chunks whose saved data names a bare block are loaded), a few per tick, with a progress line. `/foliage restore status`, `/foliage restore stop`. `/foliage bare on` switches bare branches back on. | new `command/FoliageCommand`, new `world/Restore` | yes: reading region files, loading chunks without making new land, the server must stay responsive |
-| 6 | **Falling leaves.** A particle of the mod's own (a small leaf, tinted in the tree's color of that day) that drifts down from leaf spots at the stages "thin", "thinner" and "a few last leaves". Made in each player's game from random spots near the camera; nothing is sent. Settings: on or off, amount, distance, most particles alive. Costs nothing outside the weeks leaves fall. | new `client/fall/*`, particle type, pictures, `FoliageClientConfig` | yes: the look |
+| 5 | **`/dynamicleaves restore`.** Switches `bareBlocks` off, then turns every bare block of the world back into its leaf: loaded land through the walker, land on disk chunk by chunk (only chunks whose saved data names a bare block are loaded), a few per tick, with a progress line. `/dynamicleaves restore status`, `/dynamicleaves restore stop`. `/dynamicleaves bare on` switches bare branches back on. | new `command/DynamicLeavesCommand`, new `world/Restore` | yes: reading region files, loading chunks without making new land, the server must stay responsive |
+| 6 | **Falling leaves.** A particle of the mod's own (a small leaf, tinted in the tree's color of that day) that drifts down from leaf spots at the stages "thin", "thinner" and "a few last leaves". Made in each player's game from random spots near the camera; nothing is sent. Settings: on or off, amount, distance, most particles alive. Costs nothing outside the weeks leaves fall. | new `client/fall/*`, particle type, pictures, `DynamicLeavesClientConfig` | yes: the look |
 | 7 | **Distant Horizons.** Where a bare block stands, Distant Horizons is handed the full leaf (`DhApiChunkProcessingEvent`), so far crowns stay whole whatever the season. Only if Distant Horizons is installed; compiled against its API jar only. | new `compat/DistantHorizonsLink` | yes: must not load without DH, runs on DH's threads |
 | 8 | **Measurements.** The self test's forest at once from summer to winter with the default limits (ticks, time per tick, swaps per tick), a round over the bare forest before and after part 1, particles alive at the peak of the fall, written to `docs/measurements.md`. | `dev/DevSelfTest` | no |
 | 9 | README, changelog, "Stage 4 as built", design doc, review by a helper, fixes, release. | | |
@@ -518,13 +518,13 @@ names (`TO_BARE`, `TO_LEAF`, `CHUNKS_LOOKED`, `SECTIONS_SEARCHED`,
 `ROUNDS`, `NANOS`, `SECTIONS_COUNTED`, `SNOW_LANDED`, `FRUIT_DROPPED`),
 because the self test reads them by index.
 
-**2. Trees rest in winter** (new `world/TreeSeasons`). Foliage offers
+**2. Trees rest in winter** (new `world/TreeSeasons`). Dynamic Leaves offers
 itself to Dynamic Trees as its season source
-(`SeasonCompatibilityHandler.registerSeasonManager("foliage", ...)`) and
+(`SeasonCompatibilityHandler.registerSeasonManager("dynamicleaves", ...)`) and
 sets the manager when a server starts, because Dynamic Trees picks its
-source whenever it reads its own settings, which can be after Foliage has
+source whenever it reads its own settings, which can be after Dynamic Leaves has
 started. Whether it listens is its own choice
-(`preferredSeasonMod`: `*` or `foliage`).
+(`preferredSeasonMod`: `*` or `dynamicleaves`).
 
 The source keeps nothing at all: Dynamic Trees asks it from worldgen
 worker threads and in the client (the tooltip of a seed), so every answer
@@ -550,8 +550,8 @@ moved down to the first block that can hold it instead of being taken away
 otherwise get its snow on the crowns, lose it with the leaves, and stand
 as a white forest on bare ground.
 
-**5. `/foliage restore`** (new `world/Restore`, new
-`command/FoliageCommand`). The plan said to load only chunks whose saved
+**5. `/dynamicleaves restore`** (new `world/Restore`, new
+`command/DynamicLeavesCommand`). The plan said to load only chunks whose saved
 data names a bare block. Finding that out means reading and decompressing
 every chunk, which costs about as much as loading it, so instead only the
 4,096-byte header of each region file is read: it gives the list of chunks
@@ -591,7 +591,7 @@ whether the mod is installed, the second, which names its classes, is
 loaded by name and only then. It hands Distant Horizons the leaf block
 wherever a bare block stands, as that mod builds its own picture of a
 chunk, which covers every way into that picture. Compiled against an
-API-only jar; nothing of it is in Foliage's jar.
+API-only jar; nothing of it is in Dynamic Leaves' jar.
 
 It cannot be tried out here: there is no Distant Horizons jar in this
 container and the machine has no real graphics. The test is that a game
@@ -616,7 +616,7 @@ fixed and the suite was run again (57 tests, five of them new).
 
 Wrong behaviour:
 
-- **`/foliage restore` could make new land.** A region file's header names
+- **`/dynamicleaves restore` could make new land.** A region file's header names
   the half-made chunks around the visited land as well as the finished
   ones, and asking the game for one of those in full makes it: caves,
   trees, light, and more half-made neighbours with it, so a sweep would go
@@ -651,7 +651,7 @@ Wrong behaviour:
   the leaf blocks go by. Both now read the stored biome in cubes of 4 by 4
   by 4 blocks, and a worker thread of a server works it out from the
   world's shape instead.
-- **`/foliage bare on` was allowed while a sweep ran**, which would have
+- **`/dynamicleaves bare on` was allowed while a sweep ran**, which would have
   left the land behind the sweep leafy and the land ahead of it bare. It is
   refused now, and says what to do instead.
 - **Chunks that were loaded but out of the walker's reach were missed** by
@@ -662,7 +662,7 @@ Wrong behaviour:
   season's number with the other's progress; `offer()` was not done again
   when `seasonSource` was switched on; the answer Distant Horizons gives to
   a sign-up was ignored, so a refused handler still counted as a link;
-  Foliage took Dynamic Trees' season source from another season mod without
+  Dynamic Leaves took Dynamic Trees' season source from another season mod without
   saying so; two comments and one setting's description did not match what
   the code does.
 
@@ -690,10 +690,10 @@ and the tests read the walker's counters by name.
 
 A design decision of Claude's that is Lucas's to overrule: with
 `preferredSeasonMod = "*"`, which is Dynamic Trees' default and means "the
-first season mod that signed in", Foliage takes the source even when
+first season mod that signed in", Dynamic Leaves takes the source even when
 another season mod is installed, and says so in the log with the line to
 set to pick the other one. Dynamic Trees' own meaning would leave it to the
-order the mods happen to load in. Foliage wins because the leaves of the
+order the mods happen to load in. Dynamic Leaves wins because the leaves of the
 trees go by the Calendar date, and a tree that rested by another mod's
 reckoning would stand bare in the wrong week.
 
@@ -710,7 +710,7 @@ holds a mini branch: boxes along the axes in the bark of the tree's own
 branch, which is how Dynamic Trees builds its branches (read in its
 `BasicBranchBlockBakedModel`: a core box and sleeves to the block sides,
 bark columns picked by radius). Nothing of its code is copied; the boxes
-and the bark coordinates are Foliage's own.
+and the bark coordinates are Dynamic Leaves' own.
 
 - The main twig is 2 by 2 pixels, the thickness of the thinnest branch of
   Dynamic Trees, and 9 to 12 pixels long. Up to three twigs of 1 by 1
@@ -823,10 +823,10 @@ nothing to build).
 3. Stored shapes: `trees/dynamictrees/jo_codes/oak.txt` and `birch.txt`
    at the root of the jar, written by `layers.py write`, the same number
    of shapes per radius as Dynamic Trees has. Not complicated once 1 is
-   right. To check: that Foliage's tree pack wins over Dynamic Trees' own
+   right. To check: that Dynamic Leaves' tree pack wins over Dynamic Trees' own
    file, and that swamp oak, apple oak and tall birch (own code files in
    Dynamic Trees) are either left alone on purpose or get shapes too.
-4. Growth for trees from seeds: a growth logic kit `foliage:layered`
+4. Growth for trees from seeds: a growth logic kit `dynamicleaves:layered`
    (off the trunk a branch never goes up or down, as Dynamic Trees' dark
    oak does it) named in replaced species files for oak and birch.
    Complicated enough for Fable: species files can only be replaced
@@ -884,7 +884,7 @@ straight up for more than about two thirds of a block.
   species. 20 shapes per radius 2 to 8 for oak, apple oak, swamp oak
   (oak's numbers), birch and tall birch.
 - **The growth rule is set in code, not in replaced species files** (plan
-  part 4): every species with a shape file gets `foliage:layered`
+  part 4): every species with a shape file gets `dynamicleaves:layered`
   (`Species.setGrowthLogicKit`), and gets its own back when the setting
   is turned off. The rule takes Dynamic Trees' weights and, off the
   trunk, sets up and down to zero unless wood is there already.
@@ -938,7 +938,7 @@ makes a long low limb shorter instead of adding a limb above it.
   open sky and in a batch of its own; the fruit tests only need air
   under a leaf.
 - Vanilla applies reload listeners in the order they were added; adding
-  at `EventPriority.LOWEST` puts Foliage's after Dynamic Trees'.
+  at `EventPriority.LOWEST` puts Dynamic Leaves' after Dynamic Trees'.
 
 **Tests.** Eight in `LayeredLimbsGameTests` (66 in all): shape files read
 as written; the rule off the trunk; Dynamic Trees holds exactly the
@@ -950,12 +950,36 @@ limbs only; the setting off and on. `miniBranchBoxes` covers the upright
 kind. The client self test passes on the new shapes (568 checks, 37
 looks photographed, a whole year).
 
+### 0.7.0: the name Dynamic Leaves, Dynamic Trees' branches by default (2026-11-27)
+
+coolcritter22 looked at Dynamic Trees' own oaks bare (picture
+`stage7/dynamic-trees-oaks-bare.png`) and liked them better than the
+limbs in layers. He also chose to keep the mod as the link between
+Dynamic Trees and Seasons, under the name Dynamic Leaves.
+
+- `layeredLimbs` is `false` by default. Nothing else of 0.6.0 changed:
+  the shapes, `tree/LayeredLimbs`, `tree/LayeredLogic` and
+  `tools/limbs/` stay, so the setting still works. The short upright
+  twigs (`shape/MiniBranch`) and the leaves that thin from the outside
+  stay on.
+- The tests of the layered shapes turn the shapes on themselves with
+  `LayeredLimbs.use(true)` and put the setting's state back in a
+  `finally`. Both run in one call, so no other test sees the change.
+  `dynamicTreesHoldsTheLayeredShapes` also checks that by default the
+  species keep Dynamic Trees' shapes and growth.
+- Renamed: mod id `foliage` to `dynamicleaves` (resources, ids, settings
+  files, command, test batches, Gradle properties such as
+  `-Pdynamicleaves.selfTest`), package and main classes (`Foliage` to
+  `DynamicLeaves`, `FoliageConfig` to `DynamicLeavesConfig` and so on).
+  Words of the game that hold "foliage" (`foliageColorMultiplier`,
+  `getAverageFoliageColor`) are the game's and stay.
+
 ## Tests
 
 - **Game tests** (`./gradlew runGameTestServer`): the rules as pure checks,
   and in the world with real Dynamic Trees trees planted by command. Nothing
   may depend on the test's random position.
-- **Self test** (`./gradlew runClient -Pfoliage.selfTest=true` under xvfb,
+- **Self test** (`./gradlew runClient -Pdynamicleaves.selfTest=true` under xvfb,
   Sodium in `run/mods`): plants a fixed scene, photographs it from fixed
   views, counts faces per leaf block and checks pictures in numbers.
 - **Measurements** (stage 4): server time per tick in a swap, light work,

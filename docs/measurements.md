@@ -1,4 +1,4 @@
-# Foliage: what it costs
+# Dynamic Leaves: what it costs
 
 Every number here was measured, not guessed. Where a number is missing,
 it says so and why.
@@ -12,7 +12,7 @@ mod and Distant Horizons installed, and are still open.
 **How they were taken.** The faces per leaf block come from the game
 tests (`./gradlew runGameTestServer`), which plant real Dynamic Trees
 trees by command and count what the chunk builder is handed. The rest
-comes from the self test (`./gradlew runClient -Pfoliage.selfTest=true`),
+comes from the self test (`./gradlew runClient -Pdynamicleaves.selfTest=true`),
 which plants a fixed scene of about 20,000 leaf blocks, in a world with
 about 530 chunks in reach, and walks it through a whole year, taking the
 server's own counters at every look.
@@ -194,7 +194,7 @@ what Dynamic Trees does to give it leaves (a cluster on every branch
 end, leaves taken out deep inside the crown, three rounds of aging). The
 numbers are the mean over a kind's stored shapes of that size: 16 per
 size in Dynamic Trees for oak and birch and 20 for tall birch, 20 per
-size in Foliage. The game tests plant 45 of Foliage's shapes and find
+size in Dynamic Leaves. The game tests plant 45 of Dynamic Leaves' shapes and find
 their wood block for block as the tool says; the leaf counts were not
 counted again in the game for this version.
 
@@ -203,11 +203,11 @@ Leaf blocks per tree:
 | Kind | Whose shapes | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Oak | Dynamic Trees | 118 | 180 | 225 | 300 | 342 | 376 | 368 |
-| Oak | Foliage | 120 | 195 | 239 | 308 | 336 | 369 | 382 |
+| Oak | Dynamic Leaves | 120 | 195 | 239 | 308 | 336 | 369 | 382 |
 | Birch | Dynamic Trees | 121 | 173 | 215 | 269 | 334 | 318 | 331 |
-| Birch | Foliage | 121 | 157 | 237 | 264 | 315 | 315 | 304 |
+| Birch | Dynamic Leaves | 121 | 157 | 237 | 264 | 315 | 315 | 304 |
 | Tall birch | Dynamic Trees | 104 | 151 | 203 | 262 | 295 | 298 | 295 |
-| Tall birch | Foliage | 125 | 157 | 222 | 250 | 293 | 300 | 303 |
+| Tall birch | Dynamic Leaves | 125 | 157 | 222 | 250 | 293 | 300 | 303 |
 
 Every size is within a tenth of Dynamic Trees' own, except the smallest
 tall birch (a fifth more leaves, on a tree of about 100 leaf blocks).
@@ -217,11 +217,11 @@ Branch blocks per tree:
 | Kind | Whose shapes | 2 | 3 | 4 | 5 | 6 | 7 | 8 |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | Oak | Dynamic Trees | 18 | 30 | 38 | 54 | 66 | 71 | 71 |
-| Oak | Foliage | 20 | 37 | 43 | 56 | 64 | 73 | 75 |
+| Oak | Dynamic Leaves | 20 | 37 | 43 | 56 | 64 | 73 | 75 |
 | Birch | Dynamic Trees | 23 | 32 | 41 | 57 | 74 | 71 | 71 |
-| Birch | Foliage | 23 | 39 | 53 | 59 | 68 | 68 | 60 |
+| Birch | Dynamic Leaves | 23 | 39 | 53 | 59 | 68 | 68 | 60 |
 | Tall birch | Dynamic Trees | 28 | 43 | 48 | 67 | 84 | 85 | 85 |
-| Tall birch | Foliage | 32 | 48 | 57 | 66 | 72 | 74 | 72 |
+| Tall birch | Dynamic Leaves | 32 | 48 | 57 | 66 | 72 | 74 | 72 |
 
 About the same wood, so about the same work for Dynamic Trees and the
 same number of branch blocks to draw. The faces per leaf block do not
@@ -241,7 +241,7 @@ only shorter.
   past the bare blocks on its way down, fruit that has grown drops and
   fruit that has only just set goes quietly); the self test scene has
   none of it, so its counters for both are zero.
-- **The way out.** `/foliage restore` is proved by the game tests from
+- **The way out.** `/dynamicleaves restore` is proved by the game tests from
   start to stop, and its reading of a region file's table of contents by
   a region file written by hand; what a sweep of a long-played world
   costs in time is still open, because this container has no such world.

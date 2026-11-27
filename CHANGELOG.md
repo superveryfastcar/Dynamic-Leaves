@@ -3,6 +3,21 @@
 All notable changes to Foliage, newest first. The version numbers are
 explained in the README under "Versions".
 
+## 0.7.0
+
+The mod is now called Dynamic Leaves: the link between Dynamic Trees and
+Seasons, for what the seasons do to the leaves of the trees.
+
+- **New name.** Mod id `dynamicleaves` (was `foliage`), package
+  `io.github.superveryfastcar.dynamicleaves`, settings files
+  `config/dynamicleaves-client.toml` and `config/dynamicleaves-common.toml`,
+  command `/dynamicleaves`. A world that had Foliage loses its bare blocks
+  and its settings: run `/foliage restore` with 0.6.0 before you update.
+- **Dynamic Trees' own branches again.** The limbs in layers of 0.6.0 are
+  off by default (`layeredLimbs = false`); the setting turns them on. The
+  short upright twigs of bare trees and the leaves that thin from the
+  outside stay.
+
 ## 0.6.0
 
 Trees shaped after real trees, after the pictures of 0.5.0.

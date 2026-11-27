@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Draws the falling leaf pictures of the Foliage mod.
+"""Draws the falling leaf pictures of the Dynamic Leaves mod.
 
 While the leaves fall in autumn, each player's game lets single leaves drift
 down from the crowns. A falling leaf is drawn from one of these pictures,
@@ -28,7 +28,7 @@ To change a leaf, edit its rows and run, from the project folder:
     python3 tools/make_leaf_particles.py
 
 Needs Python 3 with the Pillow library (pip install pillow). The pictures are
-written to src/main/resources/assets/foliage/textures/block/ and are part
+written to src/main/resources/assets/dynamicleaves/textures/block/ and are part
 of the repository, so nobody has to run this to build the mod.
 """
 import os
@@ -91,7 +91,7 @@ LEAVES = {
     ],
 }
 
-OUT = os.path.join("src", "main", "resources", "assets", "foliage", "textures", "block")
+OUT = os.path.join("src", "main", "resources", "assets", "dynamicleaves", "textures", "block")
 
 
 def draw(rows):
